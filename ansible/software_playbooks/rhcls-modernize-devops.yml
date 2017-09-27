@@ -1,0 +1,617 @@
+#set ft=ansible
+---
+- name: get the default ip of localhost
+  hosts: localhost
+  tasks:
+    - debug:
+        var: ansible_default_ipv4.address
+
+- name: Update software on bastion and osp nodees
+  hosts: 
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_compute') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - yum:
+        name: "*"
+        state: latest
+
+- name: Reboot ocp nodes
+  hosts: 
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_compute') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tags:
+    - checkpoint0
+  tasks:
+    - name: reboot updated systems
+      shell: sudo /usr/bin/systemd-run --on-active=10 /usr/bin/systemctl reboot
+
+- name: Reboot bastion
+  hosts: 
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tags:
+    - checkpoint0
+  tasks:
+    - name: reboot updated systems
+      shell: sudo /usr/bin/systemd-run --on-active=10 /usr/bin/systemctl reboot
+
+- name: Wait for Systems to reboot
+  hosts: localhost
+  tasks:
+    - pause:
+        seconds: 30
+
+- name: Wait for bastion readiness
+  hosts: localhost
+  connection: local
+  become: false
+  tasks:
+    - wait_for:
+        port: 22
+        host: "{{ (groups[('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion_public') | replace('-', '_')]).0 }}"
+        search_regex: OpenSSH
+        delay: 30
+
+- name: Wait for SSH connection to be released
+  hosts: localhost
+  tasks:
+    - pause:
+        seconds: 3
+
+- name: Wait for full environment readiness
+  hosts: 
+    - "{{ ('tag_Project_' ~ env_type ~ '_' ~ guid) | replace('-', '_') }}"
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  gather_facts: false
+  any_errors_fatal: True
+  become: true
+  tasks:
+    - name: wait for host to be available and set hostnames
+      wait_for:
+        host: '{{ inventory_hostname }}'
+        port: 22
+        search_regex: OpenSSH
+      delegate_to: "{{ (hostvars['localhost']['groups'][('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion_public') | replace('-', '_')].0) }}"
+      become: false
+      connection: local
+    - debug:
+        msg: "{{hostvars[inventory_hostname]}}"
+    - name: Set hostname based on ec2_tag_internaldns
+      hostname:
+        name: "{{inventory_hostname}}"
+
+- name: Wait for SSH connection to be released
+  hosts: localhost
+  tasks:
+    - pause:
+        seconds: 3
+
+- name: ensure authorized keys exist for root
+  hosts: 
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_compute') | replace('-', '_') }}"
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
+  remote_user: "{{ remote_user }}"
+  become: true
+  tags:
+    - checkpoint1
+  vars:
+    - localhost_public_key: "{{ hostvars['localhost']['env_public_key'] }}"
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - lineinfile: 
+        line: "{{ localhost_public_key }}"
+        dest: /root/.ssh/authorized_keys
+
+- name: ensure private key is present on controller
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+  remote_user: "{{ remote_user }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tags:
+    - checkpoint1
+  tasks:
+    - copy: 
+        src: "{{ ANSIBLE_REPO_PATH }}/workdir/{{ env_authorized_key }}"
+        dest: /home/{{ remote_user }}/.ssh/id_rsa 
+        owner: "{{ remote_user }}"
+        group: "{{ remote_user }}"
+        mode: 0600
+    - copy: 
+        src: "{{ ANSIBLE_REPO_PATH }}/workdir/{{ env_authorized_key }}"
+        dest: /root/.ssh/id_rsa 
+        owner: "root"
+        group: "root"
+        mode: 0600
+
+- name: Install additional software on bastion
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - name: Bastion - Install required packages
+      yum:
+        name: "{{ item }}"
+        state: latest
+      with_items: "{{ bastion_packages }}"
+
+- name: Install additional software on osp nodes
+  hosts:
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_compute') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - name: enable epel repositories for python2-pip
+      yum_repository:
+        name: epel
+        description: EPEL YUM repo
+        file: external_repos
+        baseurl: https://download.fedoraproject.org/pub/epel/7/x86_64
+        gpgcheck: no
+      retries: 10
+    #- command: sudo yum clean all
+    - name: OSP - Install required packages
+      yum:
+        name: "{{ item }}"
+        state: latest
+      with_items: "{{ osp_packages }}"
+      retries: 10
+
+- name: Install shade using openstack shade role
+  hosts: 
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_compute') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  roles:
+    - "{{ ANSIBLE_REPO_PATH }}/roles/ansible-role-shade"
+
+- name: Wait for full environment readiness
+  hosts: 
+    - "{{ ('tag_Project_' ~ env_type ~ '_' ~ guid) | replace('-', '_') }}"
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  gather_facts: false
+  any_errors_fatal: True
+  become: true
+  tags:
+    - step001
+    - wait_ssh
+    - set_hostname
+  tasks:
+    - name: wait for host to be available and set hostnames
+      wait_for:
+        host: '{{ inventory_hostname }}'
+        port: 22
+        search_regex: OpenSSH
+      delegate_to: "{{ (hostvars['localhost']['groups'][('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_')].0) }}"
+      become: false
+      connection: local
+    - debug:
+        msg: "{{hostvars[inventory_hostname]}}"
+    - name: Set hostname based on ec2_tag_internaldns
+      hostname:
+        name: "{{inventory_hostname}}"
+
+- name: Wait for SSH connection to be released
+  hosts: localhost
+  tasks:
+    - pause:
+        seconds: 3
+
+- name: Configure enabled services
+  hosts: 
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_OSP_Nodes') | replace('-', '_') }}"
+  become: true
+  vars:
+    - enabled_services:
+        - ntpd
+        - nfs
+    - disabled_services:
+        - avahi-daemon
+        - chronyd
+        - firewalld
+        - cups
+        - libvirtd
+        - ModemManager
+        - oddjobd
+        - postfix
+        - wpa_supplicant
+        - NetworkManager
+
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - name: Enabling custom services
+      systemd:
+        state: started
+        enabled: yes
+        name: "{{ item }}"
+      with_items: "{{ enabled_services | default([])}}"
+      when: enabled_services is defined
+    - name: Stopping and disabling systemd services which are not needed
+      ignore_errors: yes
+      systemd:
+        state: stopped
+        enabled: no
+        name: "{{ item }}"
+      with_items: "{{ disabled_services }}"
+
+- name: Create directories for nfs exports
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
+  become: true
+  vars:
+    - nfs_exports:
+        - "{{ glance_image_url }}"
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  handlers:
+    - name: Export NFS
+      command: exportfs -ra
+  tasks:
+    - name: get image disk device name
+      shell: "lsblk | gawk 'match($0, /{{ bastion_image_disk_size }}/) {print $1; exit}'"
+      register: image_disk_name
+    - name: mount image disk on bastion
+      mount:
+        src: "/dev/{{ image_disk_name.stdout }}"
+        name: "{{ glance_image_url }}"
+        fstype: ext4
+        state: mounted
+    - name: Create directories for NFS export
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: 0755
+      with_items: "{{ nfs_exports }}"
+    - name: Configure /etc/exports
+      template:
+        src: "{{ exports_template }}"
+        dest: /etc/exports
+      notify: Export NFS
+
+- name: generate ssl certs
+  hosts: localhost
+  become: false
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+  - command: 'openssl req -subj "/C=XX/ST=XX/L=XX/O=XX/OU=IT Department/CN=XX" -x509 -sha256 -newkey rsa:2048 -keyout {{ ANSIBLE_REPO_PATH }}/workdir/selfkey-{{ guid }}.key -out {{ ANSIBLE_REPO_PATH }}/workdir/selfcert-{{ guid }}.crt -days 1024 -nodes'
+
+
+- name: Install OSP
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+  become: true
+  vars:
+    - host_tag: "{{ inventory_hostname | replace('-REPL.rhpds.opentlc.com', '') }}"
+    - answers_file_url: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/packstack/answers.j2"
+    - answers_file: /home/{{ remote_user }}/answers.txt
+    - glance_image_destination: "{{ glance_image_url }}"
+    - glance_images:
+        - { name: 'master', src: 'rhel.qcow2',dest: 'master.qcow2', flavor: 'm1.small' }
+        - { name: 'node01', src: 'rhel.qcow2',dest: 'node01.qcow2', flavor: 'm1.small' }
+        - { name: 'node02', src: 'rhel.qcow2',dest: 'node02.qcow2', flavor: 'm1.small' }
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - name: copy ssl cert to OSP Nodes
+      copy:
+        src: "{{ ANSIBLE_REPO_PATH }}/workdir/selfcert-{{ guid }}.crt"
+        dest: /etc/pki/tls/certs/selfcert.crt
+    - name: copy ssl cert to OSP Nodes
+      copy:
+        src: "{{ ANSIBLE_REPO_PATH }}/workdir/selfcert-{{ guid }}.crt"
+        dest: /etc/pki/tls/certs/packstack_cacert.crt
+    - name: copy ssl key to OSP Nodes
+      copy:
+        src: "{{ ANSIBLE_REPO_PATH }}/workdir/selfkey-{{ guid }}.key"
+        dest: /etc/pki/tls/private/selfkey.key
+    - name: Capture answers file for all-in-one OSP install
+      template:
+        src: "{{ answers_file_url }}" 
+        dest: "{{ answers_file }}"
+
+      notify: restart httpd
+    - name: Install OSP using answers file
+      command: /usr/bin/packstack --answer-file={{answers_file}}
+    - lineinfile:
+        dest: /etc/nova/nova.conf
+        regexp: '^#resume_guests_state_on_host_boot=false'
+        line: 'resume_guests_state_on_host_boot=true'
+  #  - lineinfile:
+  #      dest: /etc/nova/nova.conf
+  #      regexp: '^#compute_driver=libvirt.LibvirtDriver'
+  #      line: 'compute_driver=libvirt.LibvirtDriver'
+    - shell: systemctl restart openstack-nova-*
+    - lineinfile:
+        dest: /etc/httpd/conf.d/15-horizon_vhost.conf
+        insertbefore: '^  ServerAlias localhost'
+        line: '  ServerAlias *.srv.ravcloud.com'
+      notify: restart httpd
+  handlers:
+    - name: restart httpd
+      service:
+        name: httpd
+        state: restarted
+
+- name: Configure cloudforms appliance
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_cloudforms') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - name: appliance_console_cli
+      command: "sudo -i -u root appliance_console_cli -k -i -b /dev/vdb -p {{ default_password }} -r 123 -H cloudforms.example.com -v"
+
+- name: Configure Openstack and Upload Image
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+  become: true
+  vars:
+    - host_tag: "{{ inventory_hostname | replace('-REPL.rhpds.opentlc.com', '') }}"
+    - answers_file_url: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/packstack/answers.txt"
+    - answers_file: /home/{{ remote_user }}/answers.txt
+    - glance_image_destination: "{{ glance_image_url }}"
+    - glance_images:
+        - { name: 'master', src: 'rhel.qcow2',dest: 'rhel.qcow2', flavor: 'm1.small' }
+        - { name: 'node01', src: 'rhel.qcow2',dest: 'rhel.qcow2', flavor: 'm1.small' }
+        - { name: 'node02', src: 'rhel.qcow2',dest: 'rhel.qcow2', flavor: 'm1.small' }
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - name: mount glance disk on osp nodes
+      mount:
+        name: "{{ glance_image_destination }}"
+        src: "10.0.0.5:{{ glance_image_url }}"
+        fstype: nfs
+        state: mounted
+    
+    - name: Upload image into glance
+      os_image:
+        auth:
+          auth_url: http://{{ ansible_default_ipv4.address }}:5000/v2.0
+          username: admin
+          password: "{{ default_password }}"
+          project_name: admin
+        name: rhel.qcow2
+        state: present
+        filename: "{{ glance_image_destination }}/rhel.qcow2"
+    - name: generate osp keys
+      os_keypair:
+        auth:
+          auth_url: http://{{ ansible_default_ipv4.address }}:5000/v2.0
+          username: admin
+          password: "{{ default_password }}"
+          project_name: admin
+        state: present
+        name: ansible_key
+      register: osp_keys
+    - debug:
+        var: osp_keys
+    - name: save osp public key to file
+      copy:
+        content: "{{ osp_keys.key.public_key }}"
+        dest: "/root/osp_rsa.pub"
+    - name: save osp private key to file
+      copy:
+        content: "{{ osp_keys.key.private_key }}"
+        dest: "/root/osp_rsa"
+        mode: 0600
+        owner: root
+    - os_network:
+        auth:
+          auth_url: http://{{ ansible_default_ipv4.address }}:5000/v2.0
+          username: admin
+          password: "{{ default_password }}"
+          project_name: admin
+        state: present
+        name: int_network
+        external: false
+        shared: true
+    - os_subnet:
+        auth:
+          auth_url: http://{{ ansible_default_ipv4.address }}:5000/v2.0
+          username: admin
+          password: "{{ default_password }}"
+          project_name: admin
+        state: present
+        network_name: int_network
+        name: int_subnet1
+        cidr: 192.168.20.0/24
+    - os_router:
+        auth:
+          auth_url: http://{{ ansible_default_ipv4.address }}:5000/v2.0
+          username: admin
+          password: "{{ default_password }}"
+          project_name: admin
+        state: present
+        name: osp-router
+        interfaces:
+        - int_subnet1
+    - os_security_group_rule:
+        auth:
+          auth_url: http://{{ ansible_default_ipv4.address }}:5000/v2.0
+          username: admin
+          password: "{{ default_password }}"
+          project_name: admin
+        security_group: default
+        protocol: tcp
+        port_range_min: 22
+        port_range_max: 22
+        remote_ip_prefix: 0.0.0.0/0
+    - shell: systemctl restart openstack-nova-*
+    - shell: systemctl restart mariadb
+    - shell: systemctl restart openstack-neutron*
+    - pause:
+        seconds: 30
+  handlers:
+    - name: restart httpd
+      service:
+        name: httpd
+        state: restarted
+    
+#- name: Reboot ocp nodes
+#  hosts: 
+#    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+#    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_compute') | replace('-', '_') }}"
+#  become: true
+#  vars_files:
+#    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+#    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+#    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+#  tags:
+#    - checkpoint0
+#  tasks:
+#    - name: reboot updated systems
+#      shell: sudo /usr/bin/systemd-run --on-active=10 /usr/bin/systemctl reboot
+#
+#- name: Reboot bastion
+#  hosts: 
+#    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
+#  become: true
+#  vars_files:
+#    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+#    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+#    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+#  tags:
+#    - checkpoint0
+#  tasks:
+#    - name: reboot updated systems
+#      shell: sudo /usr/bin/systemd-run --on-active=10 /usr/bin/systemctl reboot
+#
+#- name: Wait for Systems to reboot
+#  hosts: localhost
+#  tasks:
+#    - pause:
+#        seconds: 30
+#
+#- name: Wait for bastion readiness
+#  hosts: localhost
+#  become: false
+#  tasks:
+#    - wait_for:
+#        port: 22
+#        host: "{{ (groups[('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion_public') | replace('-', '_')]).0 }}"
+#        search_regex: OpenSSH
+#        delay: 30
+#      connection: local
+#
+#- name: Wait for SSH connection to be released
+#  hosts: localhost
+#  tasks:
+#    - pause:
+#        seconds: 3
+#
+#- name: Wait for full environment readiness
+#  hosts: 
+#    - "{{ ('tag_Project_' ~ env_type ~ '_' ~ guid) | replace('-', '_') }}"
+#  vars_files:
+#    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+#    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+#    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+#  gather_facts: false
+#  any_errors_fatal: True
+#  become: true
+#  tasks:
+#    - name: wait for host to be available and set hostnames
+#      wait_for:
+#        host: '{{ inventory_hostname }}'
+#        port: 22
+#        search_regex: OpenSSH
+#      delegate_to: "{{ (hostvars['localhost']['groups'][('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion_public') | replace('-', '_')].0) }}"
+#      become: false
+#      connection: local
+#    - debug:
+#        msg: "{{hostvars[inventory_hostname]}}"
+#    - name: Set hostname based on ec2_tag_internaldns
+#      hostname:
+#        name: "{{inventory_hostname}}"
+
+#- include: "{{ ANSIBLE_REPO_PATH }}/cloud_providers/{{ cloud_provider }}/checkpoint-freeze.yml checkpoint_id=checkpoint1"
+
+- name: Wait for openstack services
+  hosts: localhost
+  tasks:
+    - pause:
+        seconds: 300
+
+- name: Launch OSP Instances
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+  become: true
+  vars:
+    - host_tag: "{{ inventory_hostname | replace('-REPL.rhpds.opentlc.com', '') }}"
+    - answers_file_url: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/packstack/answers.txt"
+    - answers_file: /home/{{ remote_user }}/answers.txt
+    - glance_image_destination: "{{ glance_image_url }}"
+    - glance_images:
+        - { name: 'master', src: 'rhel.qcow2',dest: 'rhel.qcow2', flavor: 'm1.small' }
+        - { name: 'node01', src: 'rhel.qcow2',dest: 'rhel.qcow2', flavor: 'm1.small' }
+        - { name: 'node02', src: 'rhel.qcow2',dest: 'rhel.qcow2', flavor: 'm1.small' }
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - name: launch compute instance
+      os_server:
+        auth:
+          auth_url: http://{{ ansible_default_ipv4.address }}:5000/v2.0
+          username: admin
+          password: "{{ default_password }}"
+          project_name: admin
+        timeout: 10000
+        auto_ip: no
+        state: present
+        key_name: ansible_key
+        image: "{{ item.src }}"
+        flavor: "{{ item.flavor }}"
+        name: "{{ item.name }}"
+      with_items: "{{ glance_images }}"

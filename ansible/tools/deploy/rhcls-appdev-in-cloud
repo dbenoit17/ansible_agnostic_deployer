@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# calls ansible_playbook with a specified environment
+
+# for use with ansible_agnostic_deployer
+
+RESUME_FROM_CHECKPOINT=""
+CHECKPOINT_SKIP_TAGS=""
+CHECKPOINT_SAVING='off'
+
+# 
+# You do not need to edit anything below this line
+# 
+
+THIS_FILE=`readlink -f $0`
+AGNOSTIC_DEPLOYER_ROOT=$(realpath `dirname $(readlink -f $0)`/../../..)
+CLOUDPROVIDER=ravello
+ENVTYPE=rhcls-appdev-in-cloud
+SOFTWARE=rhcls-appdev-in-cloud
+
+BLUEPRINT_NAME=$ENVTYPE.$RESUME_FROM_CHECKPOINT-bp
+BLUEPRINT_ID=`python $AGNOSTIC_DEPLOYER_ROOT/ansible/tools/bp-id.py $BLUEPRINT_NAME`
+
+if [[ "$CHECKPOINT_SAVING" == "on" ]]; then
+  CHECKPOINT_SAVING=""
+else
+  SKIP_FLAG="--skip-tags"
+  CHECKPOINT_SAVING="checkpoint-freeze,"
+fi 
+
+if [[ "$RESUME_FROM_CHECKPOINT" == "" ]]; then
+  CHECKPOINT_ARGS="$SKIP_FLAG $CHECKPOINT_SAVING"
+else
+  if [[ "$CHECKPOINT_SKIP_TAGS" != "" ]]; then
+    SKIP_FLAG="--skip-tags"
+    CHECKPOINT_SKIP_TAGS="$CHECKPOINT_SKIP_TAGS,"
+  fi
+
+  CHECKPOINT_ARGS="-e blueprint_id=$BLUEPRINT_ID \
+                   -e env_authorized_key=$BLUEPRINT_ID-checkpoint.key \
+                   -e checkpoint_resume=true \
+                    $SKIP_FLAG ${CHECKPOINT_SKIP_TAGS}${CHECKPOINT_SAVING}skip-resume"
+fi
+
+
+# If called without --no-increment flag, 
+# execute ansible-playbook and increment iteration
+if [[ "$1" == "--no-increment" ]]; then
+     ansible-playbook $AGNOSTIC_DEPLOYER_ROOT/ansible/main.yml \
+      -e "env_type=$ENVTYPE" \
+      -e "guid=dbenoit5" \
+      -e "cloud_provider=$CLOUDPROVIDER" \
+      -e "software_to_deploy=$SOFTWARE" \
+      -e "ANSIBLE_REPO_PATH=$AGNOSTIC_DEPLOYER_ROOT/ansible" \
+       -vvvv  \
+      $CHECKPOINT_ARGS
+else
+  sed -i "s/ENVID=1$ENVID/ENVID=$(($ENVID+1))/" $THIS_FILE
+  script -c "time $THIS_FILE --no-increment" \
+            $AGNOSTIC_DEPLOYER_ROOT/ansible/workdir/$ENVTYPE-$ENVID-output
+fi
+

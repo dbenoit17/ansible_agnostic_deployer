@@ -99,6 +99,9 @@ options:
   app_template:
     description:
      - Path to a YML file that defines an application infrastructure then creates a blueprint for further processing with follow-on playbooks.  Must use state=design
+  cost_bucket:
+    description:
+     - Path to a YML file that defines an application infrastructure then creates a blueprint for further processing with follow-on playbooks.  Must use state=design
 '''
 
 EXAMPLES = '''
@@ -157,6 +160,19 @@ import base64
 import getpass
 import logging
 import logging.handlers
+
+def set_cost_bucket(appID, appType, cost_bucket_name, client):
+    available_cbs = ''
+    for cost_bucket in client.get_cost_buckets(permissions='execute'):
+        available_cbs = available_cbs + ', ' + cost_bucket['name']
+        if cost_bucket['name'] == cost_bucket_name:
+            client.associate_resource_to_cost_bucket(
+                         cost_bucket['id'], 
+                         {'resourceId': appID, 'resourceType': appType}) 
+            return
+
+    raise Exception("Cost Bucket: " + cost_bucket_name + " - not found.  Available cost buckets: " + available_cbs)
+    return
 
 def get_credentials():
         with open(os.path.expanduser("~/.ravello_login"),"r") as pf:
@@ -266,7 +282,8 @@ def main():
             blueprint_description=dict(required=False, type='str'),
             blueprint_name=dict(required=False, type='str'),
             wait=dict(type='bool', default=True ,choices=BOOLEANS),
-            wait_timeout=dict(default=1200, type='int')
+            wait_timeout=dict(default=1200, type='int'),
+            cost_bucket=dict(default='Organization', type='str')
     )
     module = AnsibleModule(
         argument_spec=argument_spec,
@@ -452,7 +469,9 @@ def create_app(client, module):
     new_app['description'] = app_description
     new_app['design'] = {}
     new_app['design']['vms'] = []
+    hostname_ip_mapping = {}
     for vm in read_app['vms']:
+      hostname_ip_mapping[vm['hostnames'][0]] = {}
       pubip = False
       if not 'description' in vm:
         vm['description'] = ""
@@ -587,7 +606,12 @@ def create_app(client, module):
         new_nic['ipConfig'] = {}
         if 'autoIpConfig' in nic['ipConfig']:
           if 'reservedIp' in nic['ipConfig']['autoIpConfig']:
-            new_nic['ipConfig']['autoIpConfig'] = { 'reservedIp': nic['ipConfig']['autoIpConfig']['reservedIp'] }
+            new_nic['ipConfig']['autoIpConfig'] = { 
+                    'reservedIp': nic['ipConfig']['autoIpConfig']['reservedIp'] 
+                    }
+            for hostname in vm['hostnames']:
+                hostname_ip_mapping[vm['hostnames'][0]][nic['name']] = \
+                        nic['ipConfig']['autoIpConfig']['reservedIp']
         elif 'staticIpConfig' in nic['ipConfig']:
           if not 'ip' in nic['ipConfig']['staticIpConfig']:
             module.fail_json(msg = 'FATAL ERROR ipConfig/staticIpConfig is missing ip!')
@@ -601,7 +625,7 @@ def create_app(client, module):
           if 'dns' in nic['ipConfig']['staticIpConfig']:
             new_nic['ipConfig']['staticIpConfig']['dns'] = nic['ipConfig']['staticIpConfig']['dns']
         if 'hasPublicIp' in nic['ipConfig']:
-          new_nic['ipConfig']['hasPublicIp'] = True
+          new_nic['ipConfig']['externalAccessState'] = 'ALWAYS_PUBLIC_IP'
           pubip = True
         connections.append(new_nic)
       if pubip and 'suppliedServices' in vm:
@@ -621,7 +645,26 @@ def create_app(client, module):
           if 'protocol' in svc:
             new_svc['protocol'] = svc['protocol']
           services.append(new_svc)
+
       new_app['design']['vms'].append(new_vm)
+
+    #if 'network' not in new_app['design']:
+    #  new_app['design']['network'] = {}
+    #if 'subnets' not in new_app['design']['network']:
+    #  new_app['design']['network']['subnets'] = []
+    #for block in ['192.168.1.5']:
+    #  new_item = {
+    #          'mask': '255.255.0.0',
+    #          'net': block,
+    #          'ipVersion': 'IPV4',
+    #          'ipConfigurationIds': []
+    #          }
+      #new_app['design']['network']['subnets'].append(new_item)
+
+
+    requestfile = open("../workdir/request.txt", "w")
+    requestfile.write(json.dumps(new_app))
+    requestfile.close()
     try:
         created_app = client.create_application(new_app)
     except Exception, e:
@@ -630,6 +673,50 @@ def create_app(client, module):
         module.fail_json(msg = '%s' % e,stdout='%s' % log_contents, jsonout='%s' % new_app)
     appID = created_app['id']
     blueprint_dict = {"applicationId":appID, "blueprintName":blueprint_name, "offline": False, "description":app_description }
+
+    created_app = client.get_application(appID)
+
+    new_vms = []
+    reserved_entries = []
+    nic_names = []
+    for vm in created_app['design']['vms']:
+        for nic in vm['networkConnections']:
+          nic_id = nic['ipConfig']['id']
+          nic_name = nic['name']
+          nic_ip = hostname_ip_mapping[vm['hostnames'][0]][nic_name]
+          item = {
+                 'ipConfigurationId': nic_id,
+                  'ip': nic_ip
+                 }
+          reserved_entries.append(item)
+        new_services = []
+        if 'suppliedServices' in vm:
+            for svc in vm ['suppliedServices']:
+                svc['useLuidForIpConfig'] = True
+                svc['ipConfigLuid'] = nic_id
+                new_services.append(svc)
+        vm['suppliedServices'] = new_services
+        new_vms.append(vm)
+
+        created_app['design']['network']['services']['dhcpServers'][0]['reservedIpEntries'] = reserved_entries
+
+    created_app['design']['vms'] = new_vms
+
+    new_dhcp = {
+            'mask': '255.255.255.0',
+            'poolStart': '192.168.1.4',
+            'poolEnd': '192.168.1.254'
+            }
+    created_app['design']['network']['services']['dhcpServers'].append(new_dhcp)
+
+    client.update_application(created_app)
+
+    created_app = client.get_application(appID)
+    created_app_file = open("../workdir/app_request.json", "w")
+    created_app_file.write(json.dumps(created_app))
+    created_app_file.close()
+
+
     try:
         blueprint_id=((client.create_blueprint(blueprint_dict))['_href'].split('/'))[2]
         client.delete_application(appID)
@@ -652,13 +739,15 @@ def create_app_and_publish(client, module):
     app = client.create_application(app)
     req = {}
     if 'performance' == module.params.get("publish_optimization"):
-        req = {'id': app['id'] ,'preferredCloud': module.params.get("cloud"),'preferredRegion': module.params.get("region"), 'optimizationLevel': 'PERFORMANCE_OPTIMIZED'}
+        #req = {'id': app['id'] ,'preferredCloud': module.params.get("cloud"),'preferredRegion': module.params.get("region"), 'optimizationLevel': 'PERFORMANCE_OPTIMIZED'}
+        req = {'id': app['id'], 'preferredRegion': module.params.get("region"), 'optimizationLevel': 'PERFORMANCE_OPTIMIZED'}
     ttl=module.params.get("application_ttl")
     if ttl != -1:
         ttl =ttl * 60
         exp_req = {'expirationFromNowSeconds': ttl}
         client.set_application_expiration(app,exp_req)
     client.publish_application(app, req)
+    set_cost_bucket(app['id'], 'application', module.params.get('cost_bucket'), client)
     _wait_for_state(client,'STARTED',module)
     log_contents = log_capture_string.getvalue()
     log_capture_string.close()

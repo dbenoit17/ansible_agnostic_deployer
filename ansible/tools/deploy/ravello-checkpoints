@@ -1,0 +1,70 @@
+#!/bin/bash
+
+# calls ansible_playbook with a specified environment
+
+# for use with ansible_agnostic_deployer
+
+
+CHECKPOINT_ID=checkpoint1
+CHECKPOINT_TAGS=""
+
+THIS_FILE=`readlink -f $0`
+AGNOSTIC_DEPLOYER_ROOT=$(realpath `dirname $(readlink -f $0)`/../../..)
+GUID=default-user
+ENVID=79
+CLOUDPROVIDER=ravello
+ENVTYPE=ravello-checkpoints
+SOFTWARE=ravello-checkpoints
+REMOTE_USER=cloud-user
+SSH_USER=cloud-user
+DELETE_APP=false
+REPO_VERSION=3.5
+REPO_METHOD=rhn
+INSTALL_IPA_CLIENT=false
+ENV_EXPIRE=256
+
+
+
+BLUEPRINT_NAME=$ENVTYPE.$CHECKPOINT_ID-bp
+BLUEPRINT_ID=`python $AGNOSTIC_DEPLOYER_ROOT/ansible/tools/bp-id.py $BLUEPRINT_NAME`
+
+
+if [[ "$CHECKPOINT_TAGS" == *"checkpoint-resume"* ]]; then
+  CHECKPOINT_ARGS="-e env_public_key='' \
+                   -e blueprint_id=$BLUEPRINT_ID \
+                   -e env_authorized_key=$BLUEPRINT_ID-checkpoint.key
+                    --tags $CHECKPOINT_TAGS"
+elif [[ "$CHECKPOINT_TAGS" == "checkpoint-save" || \
+        "$CHECKPOINT_TAGS" == "checkpoint-freeze" ]]; then
+  CHECKPOINT_ARGS=''
+else
+  CHECKPOINT_ARGS="--skip-tags checkpoint-freeze"
+fi
+
+
+# If called without --no-increment flag, 
+# execute ansible-playbook and increment iteration
+if [[ "$1" == "--no-increment" ]]; then
+     ansible-playbook $AGNOSTIC_DEPLOYER_ROOT/ansible/main.yml \
+      -e "env_type=$ENVTYPE" \
+      -e "cloud_provider=$CLOUDPROVIDER" \
+      -e "software_to_deploy=$SOFTWARE" \
+      -e "guid=$GUID-`printf '%x' $ENVID`" \
+      -e "ANSIBLE_REPO_PATH=$AGNOSTIC_DEPLOYER_ROOT/ansible" \
+      -e "delete_app_post_deploy=$DELETE_APP" \
+      -e "remote_user=$REMOTE_USER" \
+      -e "ansible_ssh_user=$SSH_USER" \
+      -e "repo_version=$REPO_VERSION" \
+      -e "repo_method=$REPO_METHOD" \
+      -e "env_expire=$ENV_EXPIRE" \
+      -e "checkpoint_bp=$BLUEPRINT_ID"\
+      -vvvv  \
+      $CHECKPOINT_ARGS
+      # Uncomment the above line to deploy from checkpoint
+
+else
+  sed -i "s/ENVID=$ENVID/ENVID=$(($ENVID+1))/" $THIS_FILE
+  script -c "time $THIS_FILE --no-increment" \
+            $AGNOSTIC_DEPLOYER_ROOT/ansible/workdir/$ENVTYPE-`printf '%x' $ENVID`-output
+fi
+

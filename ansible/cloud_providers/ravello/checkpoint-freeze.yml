@@ -1,0 +1,72 @@
+---
+# tasks file for checkpoint-freeze
+# Create blueprint from existing app
+  - hosts: localhost
+    vars_files:
+      - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+      - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    vars:
+     - checkpoint_prefix: ""
+    tags:
+      - checkpoint-save
+      - checkpoint-freeze
+    tasks: 
+     - local_action:
+         module: ravello_app
+         name: '{{ application_name }}'
+         app_name: '{{ application_name }}'
+#        state: 'stopped'
+         blueprint_name: '{{ checkpoint_prefix }}{{ env_type }}.{{ checkpoint_id }}-bp'
+         blueprint_description: 'Blueprint of app {{ env_type }}.{{ checkpoint_id }}'
+         state: blueprint
+       register: design_results
+     - debug:
+         var: env_authorized_key
+     - copy:
+         src: "{{ ANSIBLE_REPO_PATH }}/workdir/{{ env_authorized_key }}"
+         dest: "{{ ANSIBLE_REPO_PATH }}/workdir/{{ design_results.blueprint_id }}-checkpoint.key"
+         mode: 0600
+         owner: root
+     - copy:
+         src: "{{ ANSIBLE_REPO_PATH }}/workdir/{{ env_authorized_key }}.pub"
+         dest: "{{ ANSIBLE_REPO_PATH }}/workdir/{{ design_results.blueprint_id }}-checkpoint.key.pub"
+         mode: 0600
+         owner: root
+
+
+  - name: Wait for bastion readiness
+    hosts: localhost
+    tasks:
+      - wait_for:
+          port: 22
+          host: "{{ (groups[('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion_public') | replace('-', '_')]).0 }}"
+          search_regex: OpenSSH
+          delay: 30
+
+  - name: Wait for SSH connection to be released
+    hosts: localhost
+    tags:
+      - checkpoint-resume
+    tasks:
+      - pause:
+          seconds: 5
+
+  - name: Wait for other hosts
+    hosts: bastion
+    tasks:
+      - wait_for:
+          port: 22
+          search_regex: OpenSSH
+          delay: 30
+          host: "{{ item }}"
+        with_items: "{{ (groups[('tag_Project_' ~ env_type ~ '_' ~ guid )| replace('-', '_')]) }}"
+    tags:
+      - checkpoint-resume
+  
+  - name: Wait for SSH connection to be released
+    hosts: localhost
+    tags:
+      - checkpoint-resume
+    tasks:
+      - pause:
+          seconds: 15
