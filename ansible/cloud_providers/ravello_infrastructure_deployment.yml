@@ -1,8 +1,7 @@
 ---
 
 - name: Step 000 Generate env ssh keys
-  include: "{{ ANSIBLE_REPO_PATH }}/cloud_providers/ravello/ssh_env_keygen.yml"
-
+  include: "{{ ANSIBLE_REPO_PATH }}/cloud_providers/ravello/ssh_env_keygen.yml tags=checkpoint0"
           
 - name: Step 001 Deploy Infrastructure
   hosts: localhost
@@ -10,11 +9,6 @@
   gather_facts: false
   become: false
   vars:
-    - ssh_password_auth: False
-    - ravello_cost_bucket: Organization
-    - publish_optimization: cost
-    - publish_region: default
-    - publish_cloud: default
     - allow_nested: False
     - physical_host: False
   vars_files:
@@ -23,6 +17,8 @@
   tags:
     - step001
     - deploy_infrastructure
+    - checkpoint-resume
+    - checkpoint0
   tasks:
     - name: Generate Ravello Template
       template:
@@ -62,6 +58,25 @@
 
     ######################### Start application from Ravello Blueprint
 
+- name: Step 001 Deploy Infrastructure
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  vars:
+    - ssh_password_auth: False
+    - ravello_cost_bucket: Organization
+    - publish_optimization: cost
+    - publish_region: default
+    - publish_cloud: default
+    - blueprint_id: "{{ design_results.blueprint_id }}"
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+  tags:
+    - checkpoint-resume
+    - checkpoint0
+  tasks:
     - name: display variables for create application based on deployed blueprint and wait for start
       debug:
         var: "{{ item }}"
@@ -70,6 +85,7 @@
         - application_name
         - application_description
         - design_results.blueprint_id
+        - blueprint_id
         - wait_timeout
 
     - name: create application based on deployed blueprint and wait for start
@@ -78,7 +94,7 @@
         app_name: "{{ application_name }}"
         description: "{{ application_description }}"
         state: present
-        blueprint_id: "{{ design_results.blueprint_id }}"
+        blueprint_id: "{{ blueprint_id }}"
         wait_timeout: "{{ wait_timeout }}"
         application_ttl: "{{ env_expire }}"
         cost_bucket: "{{ ravello_cost_bucket }}"
@@ -107,29 +123,6 @@
         var: bp_delete_results
         verbosity: 1
 
-
-######################### Update the inventory
-
-#    - name: Refresh cloud_provider cache
-#      shell: "{{ ANSIBLE_REPO_PATH }}/inventory/{{ cloud_provider }}.py  --list {{ app_results.app_name }}"
-#      when: "not tower_run == 'true'"
-#      register: task_result
-#      until: task_result.rc == 0
-#      retries: 5
-#      delay: 30
-#      ignore_errors: yes
-#      tags:
-#       - refresh_inventory
-#       - refresh_inventory_script
-#
-#    - name: Refresh in-memory cloud_provider cache
-#      meta: refresh_inventory
-#      tags:
-#        - refresh_inventory
-#
-
-######################### Update the inventory
-
     - name: Refresh cloud_provider cache
       shell: "{{ ANSIBLE_REPO_PATH }}/inventory/{{ cloud_provider }}.py  --list {{ app_results.app_name }}"
       when: "not tower_run == 'true'"
@@ -156,7 +149,7 @@
         var: ravello_groups
 
 - name: Configure local ssh config for bastion proxy use
-  include: "{{ ANSIBLE_REPO_PATH }}/cloud_providers/{{cloud_provider}}_ssh_config_setup.yml"
+  include: "{{ ANSIBLE_REPO_PATH }}/cloud_providers/{{cloud_provider}}_ssh_config_setup.yml tags=[checkpoint0, checkpoint-resume]"
 
 - name: Wait for bastion readiness
   hosts: localhost
@@ -166,9 +159,15 @@
         host: "{{ (groups[('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_')]).0 }}"
         search_regex: OpenSSH
         delay: 30
+  tags:
+    - checkpoint-resume
+    - checkpoint0
 
 - name: Wait for SSH connection to be released
   hosts: localhost
+  tags:
+    - checkpoint-resume
+    - checkpoint0
   tasks:
     - pause:
         seconds: 3
@@ -180,6 +179,9 @@
   vars_files:
     - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
     - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+  tags:
+    - checkpoint-resume
+    - checkpoint0
   tasks:
     - copy: 
         src: "{{ ANSIBLE_REPO_PATH }}/workdir/{{ env_authorized_key }}"
@@ -202,6 +204,8 @@
     - step001
     - wait_ssh
     - set_hostname
+    - checkpoint-resume
+    - checkpoint0
   tasks:
     - name: wait for host to be available and set hostnames
       wait_for:

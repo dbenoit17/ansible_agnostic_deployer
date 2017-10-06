@@ -151,7 +151,7 @@ class Vm:
         core_yaml = """\
 - name: {vm_name}
   tag: {vm_tag}
-  allowNested: {{{{ nested_virt }}}}
+  allowNested: {{{{ allow_nested }}}}
   preferPhysicalHost: {{{{ physical_host }}}}
   description: {vm_description}
   numCpus: {vm_num_cpus}
@@ -236,6 +236,8 @@ class Vm:
         return "  networkConnections:\n" + network_device_yaml
 
     def vm_services_yaml(self):
+        if not self.services:
+            return ""
         services_yaml = "  suppliedServices:\n"
         for service in self.services:
             yaml_segment = """\

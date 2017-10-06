@@ -1,0 +1,303 @@
+vms:
+- name: 0workstation
+  tag: workstation
+  allowNested: {{ allow_nested }}
+  preferPhysicalHost: {{ physical_host }}
+  description: "0workstation\nnohbac: true\n"
+  numCpus: 2
+  memorySize:
+    unit: GB
+    value: 6
+  hostnames: [workstation-REPL.rhpds.opentlc.com, workstation.example.com, workstation]
+  supportsCloudInit: True
+  keypairId: 62226455
+  keypairName: "opentlc-admin-backdoor"
+  userData: |
+    #cloud-config
+    ssh_pwauth: False
+    disable_root: False
+    users:
+      - name: "{{ remote_user }}"
+        sudo: ALL=(ALL) NOPASSWD:ALL
+        lock_passwd: False
+        ssh-authorized-keys:
+          - "{{ env_public_key }}"
+    runcmd:
+      - sed -i -e '/^GSSAPIAuthentication/s/^.*$/GSSAPIAuthentication no/' /etc/ssh/sshd_config
+      - sed -i -e '$aUseDNS no' /etc/ssh/sshd_config
+      - systemctl restart sshd
+  hardDrives:
+  - index: 0
+    imageName: rhel-guest-image-7.3-35.x86_64
+    boot: True
+    controller: virtio
+    name: root disk
+    size:
+      unit: GB
+      value: 40
+    type: DISK
+  - index: 1
+    boot: False
+    controller: virtio
+    name: vol
+    size:
+      unit: GB
+      value: 100
+    type: DISK
+  networkConnections:
+  - name: eth0
+    device:
+      index: 0
+      deviceType: virtio
+      useAutomaticMac: False
+      mac: 2c:c2:60:48:bd:62
+    ipConfig:
+      autoIpConfig:
+        reservedIp: 192.168.0.5
+      hasPublicIp: true
+  suppliedServices:
+  - external: True
+    ip: 192.168.0.5
+    name: ssh
+    portRange: 22
+    protocol: SSH
+  - external: True
+    ip: 192.168.0.5
+    name: dns-t
+    portRange: 53
+    protocol: TCP
+  - external: True
+    ip: 192.168.0.5
+    name: dns-u
+    portRange: 53
+    protocol: UDP
+  - external: True
+    ip: 192.168.0.5
+    name: oseapi
+    portRange: 80,8443,8080-8085
+    protocol: TCP
+- name: 1master
+  tag: master
+  allowNested: {{ allow_nested }}
+  preferPhysicalHost: {{ physical_host }}
+  description: "1master\nnohbac: true\n"
+  numCpus: 4
+  memorySize:
+    unit: GB
+    value: 16
+  hostnames: [master-REPL.rhpds.opentlc.com, master.example.com, master]
+  supportsCloudInit: True
+  keypairId: 62226455
+  keypairName: "opentlc-admin-backdoor"
+  userData: |
+    #cloud-config
+    ssh_pwauth: False
+    disable_root: False
+    users:
+      - name: "{{ remote_user }}"
+        sudo: ALL=(ALL) NOPASSWD:ALL
+        lock_passwd: False
+        ssh-authorized-keys:
+          - "{{ env_public_key }}"
+    runcmd:
+      - sed -i -e '/^GSSAPIAuthentication/s/^.*$/GSSAPIAuthentication no/' /etc/ssh/sshd_config
+      - sed -i -e '$aUseDNS no' /etc/ssh/sshd_config
+      - systemctl restart sshd
+  hardDrives:
+  - index: 0
+    imageName: rhel-guest-image-7.3-35.x86_64
+    boot: True
+    controller: virtio
+    name: root disk
+    size:
+      unit: GB
+      value: 80
+    type: DISK
+  - index: 1
+    boot: False
+    controller: virtio
+    name: docker_pool
+    size:
+      unit: GB
+      value: 10
+    type: DISK
+  networkConnections:
+  - name: eth0
+    device:
+      index: 0
+      deviceType: virtio
+      useAutomaticMac: False
+      mac: 2c:c2:60:7e:d6:b3
+    ipConfig:
+      autoIpConfig:
+        reservedIp: 192.168.0.10
+      hasPublicIp: true
+- name: 2node1
+  tag: node1
+  allowNested: {{ allow_nested }}
+  preferPhysicalHost: {{ physical_host }}
+  description: "2node1\nnohbac: true\n"
+  numCpus: 4
+  memorySize:
+    unit: GB
+    value: 12
+  hostnames: [node1-REPL.rhpds.opentlc.com, node1.example.com, node1]
+  supportsCloudInit: True
+  keypairId: 62226455
+  keypairName: "opentlc-admin-backdoor"
+  userData: |
+    #cloud-config
+    ssh_pwauth: False
+    disable_root: False
+    users:
+      - name: "{{ remote_user }}"
+        sudo: ALL=(ALL) NOPASSWD:ALL
+        lock_passwd: False
+        ssh-authorized-keys:
+          - "{{ env_public_key }}"
+    runcmd:
+      - sed -i -e '/^GSSAPIAuthentication/s/^.*$/GSSAPIAuthentication no/' /etc/ssh/sshd_config
+      - sed -i -e '$aUseDNS no' /etc/ssh/sshd_config
+      - systemctl restart sshd
+  hardDrives:
+  - index: 0
+    imageName: rhel-guest-image-7.3-35.x86_64
+    boot: True
+    controller: virtio
+    name: root disk
+    size:
+      unit: GB
+      value: 60
+    type: DISK
+  - index: 1
+    boot: False
+    controller: virtio
+    name: docker
+    size:
+      unit: GB
+      value: 10
+    type: DISK
+  networkConnections:
+  - name: eth0
+    device:
+      index: 0
+      deviceType: virtio
+      useAutomaticMac: False
+      mac: 2c:c2:60:43:e9:16
+    ipConfig:
+      autoIpConfig:
+        reservedIp: 192.168.0.11
+      hasPublicIp: true
+- name: 3node2
+  tag: node2
+  allowNested: {{ allow_nested }}
+  preferPhysicalHost: {{ physical_host }}
+  description: "3node2\nnohbac: true\n"
+  numCpus: 4
+  memorySize:
+    unit: GB
+    value: 12
+  hostnames: [node2-REPL.rhpds.opentlc.com, node2.example.com, node2]
+  supportsCloudInit: True
+  keypairId: 62226455
+  keypairName: "opentlc-admin-backdoor"
+  userData: |
+    #cloud-config
+    ssh_pwauth: False
+    disable_root: False
+    users:
+      - name: "{{ remote_user }}"
+        sudo: ALL=(ALL) NOPASSWD:ALL
+        lock_passwd: False
+        ssh-authorized-keys:
+          - "{{ env_public_key }}"
+    runcmd:
+      - sed -i -e '/^GSSAPIAuthentication/s/^.*$/GSSAPIAuthentication no/' /etc/ssh/sshd_config
+      - sed -i -e '$aUseDNS no' /etc/ssh/sshd_config
+      - systemctl restart sshd
+  hardDrives:
+  - index: 0
+    imageName: rhel-guest-image-7.3-35.x86_64
+    boot: True
+    controller: virtio
+    name: root disk
+    size:
+      unit: GB
+      value: 60
+    type: DISK
+  - index: 1
+    boot: False
+    controller: virtio
+    name: docker
+    size:
+      unit: GB
+      value: 10
+    type: DISK
+  networkConnections:
+  - name: eth0
+    device:
+      index: 0
+      deviceType: virtio
+      useAutomaticMac: False
+      mac: 2c:c2:60:67:ea:14
+    ipConfig:
+      autoIpConfig:
+        reservedIp: 192.168.0.12
+      hasPublicIp: true
+- name: 4node3
+  tag: node3
+  allowNested: {{ allow_nested }}
+  preferPhysicalHost: {{ physical_host }}
+  description: "4node3\nnohbac: true\n"
+  numCpus: 4
+  memorySize:
+    unit: GB
+    value: 12
+  hostnames: [node3-REPL.rhpds.opentlc.com, node3.example.com, node3]
+  supportsCloudInit: True
+  keypairId: 62226455
+  keypairName: "opentlc-admin-backdoor"
+  userData: |
+    #cloud-config
+    ssh_pwauth: False
+    disable_root: False
+    users:
+      - name: "{{ remote_user }}"
+        sudo: ALL=(ALL) NOPASSWD:ALL
+        lock_passwd: False
+        ssh-authorized-keys:
+          - "{{ env_public_key }}"
+    runcmd:
+      - sed -i -e '/^GSSAPIAuthentication/s/^.*$/GSSAPIAuthentication no/' /etc/ssh/sshd_config
+      - sed -i -e '$aUseDNS no' /etc/ssh/sshd_config
+      - systemctl restart sshd
+  hardDrives:
+  - index: 0
+    imageName: rhel-guest-image-7.3-35.x86_64
+    boot: True
+    controller: virtio
+    name: root disk
+    size:
+      unit: GB
+      value: 60
+    type: DISK
+  - index: 1
+    boot: False
+    controller: virtio
+    name: docker
+    size:
+      unit: GB
+      value: 10
+    type: DISK
+  networkConnections:
+  - name: eth0
+    device:
+      index: 0
+      deviceType: virtio
+      useAutomaticMac: False
+      mac: 2c:c2:60:7b:f7:e4
+    ipConfig:
+      autoIpConfig:
+        reservedIp: 192.168.0.13
+      hasPublicIp: true
+

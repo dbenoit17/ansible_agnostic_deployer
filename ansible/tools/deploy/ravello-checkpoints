@@ -4,27 +4,30 @@
 
 # for use with ansible_agnostic_deployer
 
-CHECKPOINT_ID=""
+
+CHECKPOINT_ID=checkpoint1
 CHECKPOINT_TAGS=""
 
 THIS_FILE=`readlink -f $0`
 AGNOSTIC_DEPLOYER_ROOT=$(realpath `dirname $(readlink -f $0)`/../../..)
 GUID=default-user
-ENVID=0
+ENVID=79
 CLOUDPROVIDER=ravello
-ENVTYPE=expo-blank
-SOFTWARE=expo-blank
+ENVTYPE=ravello-checkpoints
+SOFTWARE=ravello-checkpoints
 REMOTE_USER=cloud-user
 SSH_USER=cloud-user
 DELETE_APP=false
-OWN_KEY=false
 REPO_VERSION=3.5
-OSRELEASE=''
 REPO_METHOD=rhn
+INSTALL_IPA_CLIENT=false
 ENV_EXPIRE=256
+
+
 
 BLUEPRINT_NAME=$ENVTYPE.$CHECKPOINT_ID-bp
 BLUEPRINT_ID=`python $AGNOSTIC_DEPLOYER_ROOT/ansible/tools/bp-id.py $BLUEPRINT_NAME`
+
 
 if [[ "$CHECKPOINT_TAGS" == *"checkpoint-resume"* ]]; then
   CHECKPOINT_ARGS="-e env_public_key='' \
@@ -51,12 +54,14 @@ if [[ "$1" == "--no-increment" ]]; then
       -e "delete_app_post_deploy=$DELETE_APP" \
       -e "remote_user=$REMOTE_USER" \
       -e "ansible_ssh_user=$SSH_USER" \
-      -e "use_own_key=$OWN_KEY" \
       -e "repo_version=$REPO_VERSION" \
       -e "repo_method=$REPO_METHOD" \
       -e "env_expire=$ENV_EXPIRE" \
-      -vvvv \
+      -e "checkpoint_bp=$BLUEPRINT_ID"\
+      -vvvv  \
       $CHECKPOINT_ARGS
+      # Uncomment the above line to deploy from checkpoint
+
 else
   sed -i "s/ENVID=$ENVID/ENVID=$(($ENVID+1))/" $THIS_FILE
   script -c "time $THIS_FILE --no-increment" \

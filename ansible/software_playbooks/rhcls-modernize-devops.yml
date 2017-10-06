@@ -1,0 +1,8 @@
+#set ft=ansible
+---
+- name: get the default ip of localhost
+  hosts: localhost
+  tasks:
+    - debug:
+        var: ansible_default_ipv4.address
+
