@@ -20,8 +20,53 @@
          blueprint_description: 'Blueprint of app {{ env_type }}.{{ checkpoint_id }}'
          state: blueprint
        register: design_results
+     - debug:
+         var: env_authorized_key
      - copy:
          src: "{{ ANSIBLE_REPO_PATH }}/workdir/{{ env_authorized_key }}"
          dest: "{{ ANSIBLE_REPO_PATH }}/workdir/{{ design_results.blueprint_id }}-checkpoint.key"
          mode: 0600
          owner: root
+     - copy:
+         src: "{{ ANSIBLE_REPO_PATH }}/workdir/{{ env_authorized_key }}.pub"
+         dest: "{{ ANSIBLE_REPO_PATH }}/workdir/{{ design_results.blueprint_id }}-checkpoint.key.pub"
+         mode: 0600
+         owner: root
+
+
+  - name: Wait for bastion readiness
+    hosts: localhost
+    tasks:
+      - wait_for:
+          port: 22
+          host: "{{ (groups[('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_')]).0 }}"
+          search_regex: OpenSSH
+          delay: 30
+
+  - name: Wait for SSH connection to be released
+    hosts: localhost
+    tags:
+      - checkpoint-resume
+    tasks:
+      - pause:
+          seconds: 5
+
+  - name: Wait for other hosts
+    hosts: bastion
+    tasks:
+      - wait_for:
+          port: 22
+          search_regex: OpenSSH
+          delay: 30
+          host: "{{ item }}"
+        with_items: "{{ (groups[('tag_Project_' ~ env_type ~ '_' ~ guid )| replace('-', '_')]) }}"
+    tags:
+      - checkpoint-resume
+  
+  - name: Wait for SSH connection to be released
+    hosts: localhost
+    tags:
+      - checkpoint-resume
+    tasks:
+      - pause:
+          seconds: 15

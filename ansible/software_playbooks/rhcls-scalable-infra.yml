@@ -19,7 +19,6 @@
     - yum:
         name: "*"
         state: latest
-      with_items: "{{ bastion_packages }}"
 
 - name: Install additional software on bastion
   hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"

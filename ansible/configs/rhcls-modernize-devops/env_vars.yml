@@ -55,6 +55,15 @@ remote_user: ec2-user
 
 common_packages:
   - python
+  - bind
+  - git
+  - net-tools
+  - iptables-services
+  - bridge-utils
+  - kexec-tools
+  - sos
+  - haproxy
+  - psacct
   - unzip
   - bash-completion
   - tmux
@@ -214,9 +223,9 @@ env_expire: 90
 app_template:
 
 extra_host_groups:
-  - name: ocp_nodes
+  - name: OCP_Nodes
     hosts:
       - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_' ~ 'master') | replace('-', '_') }}"
-      - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_' ~ 'node1') | replace('-', '_') }}"
-      - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_' ~ 'node2') | replace('-', '_') }}"
-      - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_' ~ 'node3') | replace('-', '_') }}"
+      - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_' ~ 'node01') | replace('-', '_') }}"
+      - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_' ~ 'node02') | replace('-', '_') }}"
+      - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_' ~ 'node03') | replace('-', '_') }}"

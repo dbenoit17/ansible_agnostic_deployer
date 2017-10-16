@@ -7,7 +7,6 @@
   become: false
   tags:
     - checkpoint-resume
-    - checkpoint0
   vars:
     - cloud_template: "{{ lookup( 'file', '{{ ANSIBLE_REPO_PATH }}/workdir/{{cloud_provider}}_cloud_template.{{ env_type }}.{{ guid }}.template') | from_yaml }}"
     # This declaration is part of a workaround for a known bug in ansible.  

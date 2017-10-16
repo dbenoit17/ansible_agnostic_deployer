@@ -133,7 +133,7 @@ vms:
         reservedIp: 192.168.0.10
       hasPublicIp: true
 - name: 2node1
-  tag: node1
+  tag: node01
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "2node1\nnohbac: true\n"
@@ -141,7 +141,7 @@ vms:
   memorySize:
     unit: GB
     value: 12
-  hostnames: [node1-REPL.rhpds.opentlc.com, node1.example.com, node1]
+  hostnames: [node01-REPL.rhpds.opentlc.com, node01.example.com, node01]
   supportsCloudInit: True
   keypairId: 62226455
   keypairName: "opentlc-admin-backdoor"
@@ -189,7 +189,7 @@ vms:
         reservedIp: 192.168.0.11
       hasPublicIp: true
 - name: 3node2
-  tag: node2
+  tag: node02
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "3node2\nnohbac: true\n"
@@ -197,7 +197,7 @@ vms:
   memorySize:
     unit: GB
     value: 12
-  hostnames: [node2-REPL.rhpds.opentlc.com, node2.example.com, node2]
+  hostnames: [node02-REPL.rhpds.opentlc.com, node02.example.com, node02]
   supportsCloudInit: True
   keypairId: 62226455
   keypairName: "opentlc-admin-backdoor"
@@ -245,7 +245,7 @@ vms:
         reservedIp: 192.168.0.12
       hasPublicIp: true
 - name: 4node3
-  tag: node3
+  tag: node03
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "4node3\nnohbac: true\n"
@@ -253,7 +253,7 @@ vms:
   memorySize:
     unit: GB
     value: 12
-  hostnames: [node3-REPL.rhpds.opentlc.com, node3.example.com, node3]
+  hostnames: [node03-REPL.rhpds.opentlc.com, node03.example.com, node03]
   supportsCloudInit: True
   keypairId: 62226455
   keypairName: "opentlc-admin-backdoor"
@@ -300,4 +300,71 @@ vms:
       autoIpConfig:
         reservedIp: 192.168.0.13
       hasPublicIp: true
+- name: 5cloudforms
+  tag: cfme
+  allowNested: {{ allow_nested }}
+  preferPhysicalHost: {{ physical_host }}
+  description: "5cloudforms\nnohbac: true\n"
+  numCpus: 4
+  memorySize:
+    unit: GB
+    value: 12
+  hostnames: [cfme-REPL.rhpds.opentlc.com, cfme.example.com, cfme]
+  supportsCloudInit: True
+  keypairId: 62226455
+  keypairName: "opentlc-admin-backdoor"
+  userData: |
+    #cloud-config
+    ssh_pwauth: False
+    disable_root: False
+    users:
+      - name: "{{ remote_user }}"
+        sudo: ALL=(ALL) NOPASSWD:ALL
+        lock_passwd: False
+        ssh-authorized-keys:
+          - "{{ env_public_key }}"
+    runcmd:
+      - sed -i -e '/^GSSAPIAuthentication/s/^.*$/GSSAPIAuthentication no/' /etc/ssh/sshd_config
+      - sed -i -e '$aUseDNS no' /etc/ssh/sshd_config
+      - systemctl restart sshd
+  hardDrives:
+  - index: 0
+    imageName: disk-image-cfme-vsphere-5.8.1.5-1.x86_64.qcow
+    boot: True
+    controller: virtio
+    name: root disk
+    size:
+      unit: GB
+      value: 60
+    type: DISK
+  - index: 1
+    boot: False
+    controller: virtio
+    name: vol
+    size:
+      unit: GB
+      value: 20
+    type: DISK
+  networkConnections:
+  - name: eth0
+    device:
+      index: 0
+      deviceType: virtio
+      useAutomaticMac: False
+      mac: 2c:c2:60:0c:e9:65
+    ipConfig:
+      autoIpConfig:
+        reservedIp: 192.168.0.50
+      hasPublicIp: true
+  suppliedServices:
+  - external: True
+    ip: 192.168.0.50
+    name: http
+    portRange: 80
+    protocol: TCP
+  - external: True
+    ip: 192.168.0.50
+    name: https
+    portRange: 443
+    protocol: TCP
 

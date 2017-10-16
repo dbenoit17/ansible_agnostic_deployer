@@ -6,3 +6,216 @@
     - debug:
         var: ansible_default_ipv4.address
 
+- name: Update software on bastion and osp nodes and install OCP utils
+  hosts: 
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_OCP_Nodes') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tags:
+    - checkpoint0
+  tasks:
+    - yum:
+        name: "{{ item }}"
+        state: latest
+      with_items: "{{ common_packages }}"
+    - yum:
+        name: "*"
+        state: latest
+    - yum:
+        name: "atomic-openshift-utils"
+        state: latest
+    - yum:
+        name: "atomic-openshift-clients"
+        state: latest
+
+- name: Install and configure docker on ocp nodes
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_OCP_Nodes') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tags:
+    - checkpoint0
+  tasks:
+    - name: OSP - Install required packages
+      yum:
+        name: "docker"
+        state: latest
+    - name: configure /etc/sysconfig/docker
+      command: sed -i '/OPTIONS=.*/c\OPTIONS="--selinux-enabled --insecure-registry 172.30.0.0/16"' /etc/sysconfig/docker
+    - lineinfile:
+        dest: /etc/sysconfig/docker-storage-setup
+        line: 'DEVS=/dev/vdb'
+    - lineinfile:
+        dest: /etc/sysconfig/docker-storage-setup
+        line: 'VG=docker-vg'
+    - name: Enable and start docker
+      systemd:
+        state: started
+        enabled: yes
+        name: docker
+
+- include: "{{ ANSIBLE_REPO_PATH }}/cloud_providers/{{ cloud_provider }}/checkpoint-freeze.yml checkpoint_id=checkpoint1"
+
+- name: debug vars
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_master') | replace('-', '_') }}"
+  remote_user: "{{ remote_user }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tags:
+    - checkpoint-resume
+  tasks:
+    - debug:
+        var: hostvars
+
+- name: ensure authorized keys exist for root
+  hosts: 
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_OCP_Nodes') | replace('-', '_') }}"
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
+  remote_user: "{{ remote_user }}"
+  become: true
+  vars:
+    - localhost_public_key: "{{ hostvars['localhost']['env_public_key'] }}"
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - lineinfile: 
+        line: "{{ localhost_public_key }}"
+        dest: /root/.ssh/authorized_keys
+
+- name: ensure private key is present on master
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_master') | replace('-', '_') }}"
+  remote_user: "{{ remote_user }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tags:
+    - checkpoint-resume
+  tasks:
+    - copy: 
+        src: "{{ ANSIBLE_REPO_PATH }}/workdir/{{ env_authorized_key }}"
+        dest: /home/{{ remote_user }}/.ssh/id_rsa 
+        owner: "{{ remote_user }}"
+        group: "{{ remote_user }}"
+        mode: 0600
+    - copy: 
+        src: "{{ ANSIBLE_REPO_PATH }}/workdir/{{ env_authorized_key }}"
+        dest: /root/.ssh/id_rsa 
+        owner: "root"
+        group: "root"
+        mode: 0600
+
+- name: install ocp on bastion
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
+  remote_user: "root"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tags:
+    - checkpoint-resume
+  tasks:
+    - file:
+        path: /var/named
+        state: directory
+    - name: copy named.conf
+      copy: 
+        src: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/named/named.conf"
+        dest: "/etc/named.conf"
+    - name: copy named zone files
+      copy: 
+        src: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/named/{{ item }}"
+        dest: "/var/named/{{ item }}"
+      with_items:
+        - 0.168.192.in-addr.arpa
+        - apps.example.com.zone
+        - example.com.zone
+    - name: Enable and start named.service
+      systemd:
+        state: started
+        enabled: yes
+        name: named
+    - name: copy haproxy.cfg
+      copy: 
+        src: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/haproxy/haproxy.cfg"
+        dest: "/etc/haproxy"
+    - name: copy fixhaproxy.service
+      copy: 
+        src: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/haproxy/fixhaproxy.service"
+        dest: "/etc/systemd/system/fixhaproxy.service"
+    - name: copy update_HAProxy.sh
+      copy: 
+        src: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/haproxy/update_HAProxy.sh"
+        dest: "/usr/local/bin/update_HAProxy.sh"
+        mode: a+x
+    - lineinfile:
+        dest: /etc/resolv.conf
+        insertafter: '^search*'
+        line: 'nameserver 192.168.0.1'
+    - lineinfile:
+        dest: /etc/NetworkManager/NetworkManager.conf
+        insertafter: '^[global]'
+        line: 'nameserver 192.168.0.1'
+    - name: restart NetworkManager
+      systemd:
+        state: restarted
+        name: NetworkManager
+    - name: copy openshift-ansible
+      copy: 
+        src: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/openshift-ansible"
+        dest: "/home/{{ remote_user }}"
+    - command: ansible-playbook -i inventory /usr/share/ansible/openshift-ansible/playbooks/byo/config.yml
+      args:
+        chdir: /home/{{ remote_user }}/openshift-ansible
+    - name: Enable and start fixhaproxy
+      systemd:
+        enabled: yes
+        name: fixhaproxy
+    - name: Enable and start haproxy
+      systemd:
+        enabled: yes
+        state: started
+        name: haproxy
+
+   
+- name: configure ocp master node
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_master') | replace('-', '_') }}"
+  remote_user: "{{ remote_user }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tags:
+    - checkpoint-resume
+  tasks:
+    - command: htpasswd -c /etc/origin/master/htpasswd admin {{ default_password }}
+    - copy: 
+        src: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/publicurl/fixpublicurl.service"
+        dest: "/etc/systemd/system/fixpublicurl.service"
+    - copy: 
+        src: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/publicurl/update_publicURL.sh"
+        dest: "/usr/local/bin/update_publicURL.sh"
+        mode: a+x
+    - name: Enable and start fixpublicurl
+      systemd:
+        enabled: yes
+        state: started
+        name: fixpublicurl
+    
+    
+
+
