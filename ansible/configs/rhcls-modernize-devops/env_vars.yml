@@ -8,6 +8,13 @@
 ###### VARIABLES YOU SHOULD CONFIGURE FOR YOUR DEPLOYEMNT
 ###### OR PASS as "-e" args to ansible-playbook command
 #
+#
+
+
+
+delete_app_post_deploy: false
+
+
 bastion_assigned_hostname: workstation-REPL.rhpds.opentlc.com
 master_assigned_hostname: master-REPL.rhpds.opentlc.com
 
@@ -27,7 +34,7 @@ env_authorized_key: "{{guid}}key"
 set_env_authorized_key: true
 
 ## Networking (AWS)
-guid: defaultguid
+guid: default-user
 subdomain_base_short: "{{ guid }}"
 subdomain_base_suffix: ".example.opentlc.com"
 subdomain_base: "{{subdomain_base_short}}{{subdomain_base_suffix}}"
@@ -47,12 +54,12 @@ master_instance_count: 1
 support_instance_count: 1
 
 ansible_ssh_private_key_file: ~/.ssh/{{key_name}}.pem
-use_own_key: true
+use_own_key: false
 
 ###### VARIABLES YOU SHOULD ***NOT*** CONFIGURE FOR YOUR DEPLOYEMNT
 ###### You can, but you usually wouldn't need to.
-ansible_ssh_user: ec2-user
-remote_user: ec2-user
+ansible_ssh_user: cloud-user
+remote_user: cloud-user
 
 common_packages:
   - python
@@ -134,7 +141,7 @@ env_specific_images:
 
 ### OpenShift Vars
 #                            2:1.12.5-14.el7
-repo_version: "3.4"
+repo_version: "3.5"
 docker_version: "1.12.6"
 docker_device: /dev/xvdb
 install_nfs: true
@@ -222,6 +229,9 @@ application_description: "some text describing the blueprint created by agnostic
 env_expire: 90
 
 app_template:
+
+repo_method: activationkey
+env_expire: 256
 
 extra_host_groups:
   - name: OCP_Nodes
