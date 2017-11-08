@@ -9,6 +9,7 @@
 ###### OR PASS as "-e" args to ansible-playbook command
 #
 bastion_assigned_hostname: workstation-REPL.rhpds.opentlc.com
+master_assigned_hostname: master-REPL.rhpds.opentlc.com
 
 deploy_local_ssh_config_location: "{{ ANSIBLE_REPO_PATH }}/workdir"
 

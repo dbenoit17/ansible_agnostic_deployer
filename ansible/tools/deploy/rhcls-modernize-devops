@@ -6,7 +6,7 @@
 
 RESUME_FROM_CHECKPOINT=""
 CHECKPOINT_SKIP_TAGS=""
-CHECKPOINT_SAVING='on'
+CHECKPOINT_SAVING='off'
 
 # 
 # You do not need to edit anything below this line
@@ -15,7 +15,7 @@ CHECKPOINT_SAVING='on'
 THIS_FILE=`readlink -f $0`
 AGNOSTIC_DEPLOYER_ROOT=$(realpath `dirname $(readlink -f $0)`/../../..)
 GUID=default-user
-ENVID=67
+ENVID=187
 CLOUDPROVIDER=ravello
 ENVTYPE=rhcls-modernize-devops
 SOFTWARE=rhcls-modernize-devops

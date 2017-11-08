@@ -19,9 +19,15 @@
     - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
     - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
   tasks:
-    - name: add bastion host
+    - name: add bastion public hostname
       add_host:
         name: "{{ ravello_groups | json_query('_meta.hostvars.\"' ~ bastion_assigned_hostname ~ '\".externalFqdn') }}"
+        groups: 
+        - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion_public') | replace('-', '_') }}"
+        - "{{ ('tag_Project_' ~ env_type ~ '_' ~ guid) | replace('-', '_') }}"
+    - name: add bastion internal hostname
+      add_host:
+        name: "{{ bastion_assigned_hostname }}"
         groups: 
         - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
         - "{{ ('tag_Project_' ~ env_type ~ '_' ~ guid) | replace('-', '_') }}"
@@ -72,7 +78,7 @@
       copy:
         content: |
             #!/bin/bash
-            ssh -i {{ ANSIBLE_REPO_PATH }}/workdir/{{ guid }}key {{ remote_user }}@{{ groups[('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_')].0 }}
+            ssh -i {{ ANSIBLE_REPO_PATH }}/workdir/{{ guid }}key {{ remote_user }}@{{ groups[('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion_public') | replace('-', '_')].0 }}
         dest: '{{ ANSIBLE_REPO_PATH }}/workdir/{{env_type}}-{{ guid }}-quickssh.sh'
         mode: 0755
     # when: delete_app_post_deploy
@@ -81,4 +87,6 @@
       file:
         dest: "{{ ANSIBLE_REPO_PATH }}/workdir/{{ env_type }}_{{ guid }}_ssh_conf"
         state: touch
+    - debug:
+        var: hostvars['groups']
 

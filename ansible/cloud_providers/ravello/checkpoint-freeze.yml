@@ -39,7 +39,7 @@
     tasks:
       - wait_for:
           port: 22
-          host: "{{ (groups[('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_')]).0 }}"
+          host: "{{ (groups[('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion_public') | replace('-', '_')]).0 }}"
           search_regex: OpenSSH
           delay: 30
 
