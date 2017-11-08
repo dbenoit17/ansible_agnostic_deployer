@@ -9,8 +9,11 @@ https://github.com/sborenst/ansible_agnostic_deployer/blob/master/Overview.adoc[
 == Preparation
 
 The following dependencies must be installed:
-- Python >= 2.7
-- Ansible 2.3
+
+* Python >= 2.7
+* Ansible 2.3
+* python-ravello-sdk
+* python-jmespath
 
 Credentials for a ravello subscription must be stored in 
 `~/.ravello_login` as described in <link to creds>
