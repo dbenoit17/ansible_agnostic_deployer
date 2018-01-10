@@ -176,3 +176,5 @@ extra_host_groups:
 
 exports_template: '{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/exports.j2'
 glance_image_url: /mnt/cloud_images
+
+bastion_image_disk_size: 60

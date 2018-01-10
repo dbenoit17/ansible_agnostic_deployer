@@ -1,7 +1,7 @@
 - name: ensure public keys exist in /root
   hosts: 
     - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
-    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_OCP_Nodes') | replace('-', '_') }}"
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_OSP_Nodes') | replace('-', '_') }}"
   remote_user: "{{ remote_user }}"
   become: true
   vars_files:

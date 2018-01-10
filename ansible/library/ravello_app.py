@@ -469,7 +469,9 @@ def create_app(client, module):
     new_app['description'] = app_description
     new_app['design'] = {}
     new_app['design']['vms'] = []
+    hostname_ip_mapping = {}
     for vm in read_app['vms']:
+      hostname_ip_mapping[vm['hostnames'][0]] = {}
       pubip = False
       if not 'description' in vm:
         vm['description'] = ""
@@ -604,7 +606,12 @@ def create_app(client, module):
         new_nic['ipConfig'] = {}
         if 'autoIpConfig' in nic['ipConfig']:
           if 'reservedIp' in nic['ipConfig']['autoIpConfig']:
-            new_nic['ipConfig']['autoIpConfig'] = { 'reservedIp': nic['ipConfig']['autoIpConfig']['reservedIp'] }
+            new_nic['ipConfig']['autoIpConfig'] = { 
+                    'reservedIp': nic['ipConfig']['autoIpConfig']['reservedIp'] 
+                    }
+            for hostname in vm['hostnames']:
+                hostname_ip_mapping[vm['hostnames'][0]][nic['name']] = \
+                        nic['ipConfig']['autoIpConfig']['reservedIp']
         elif 'staticIpConfig' in nic['ipConfig']:
           if not 'ip' in nic['ipConfig']['staticIpConfig']:
             module.fail_json(msg = 'FATAL ERROR ipConfig/staticIpConfig is missing ip!')
@@ -618,7 +625,7 @@ def create_app(client, module):
           if 'dns' in nic['ipConfig']['staticIpConfig']:
             new_nic['ipConfig']['staticIpConfig']['dns'] = nic['ipConfig']['staticIpConfig']['dns']
         if 'hasPublicIp' in nic['ipConfig']:
-          new_nic['ipConfig']['hasPublicIp'] = True
+          new_nic['ipConfig']['externalAccessState'] = 'ALWAYS_PUBLIC_IP'
           pubip = True
         connections.append(new_nic)
       if pubip and 'suppliedServices' in vm:
@@ -638,7 +645,26 @@ def create_app(client, module):
           if 'protocol' in svc:
             new_svc['protocol'] = svc['protocol']
           services.append(new_svc)
+
       new_app['design']['vms'].append(new_vm)
+
+    #if 'network' not in new_app['design']:
+    #  new_app['design']['network'] = {}
+    #if 'subnets' not in new_app['design']['network']:
+    #  new_app['design']['network']['subnets'] = []
+    #for block in ['192.168.1.5']:
+    #  new_item = {
+    #          'mask': '255.255.0.0',
+    #          'net': block,
+    #          'ipVersion': 'IPV4',
+    #          'ipConfigurationIds': []
+    #          }
+      #new_app['design']['network']['subnets'].append(new_item)
+
+
+    requestfile = open("../workdir/request.txt", "w")
+    requestfile.write(json.dumps(new_app))
+    requestfile.close()
     try:
         created_app = client.create_application(new_app)
     except Exception, e:
@@ -647,6 +673,50 @@ def create_app(client, module):
         module.fail_json(msg = '%s' % e,stdout='%s' % log_contents, jsonout='%s' % new_app)
     appID = created_app['id']
     blueprint_dict = {"applicationId":appID, "blueprintName":blueprint_name, "offline": False, "description":app_description }
+
+    created_app = client.get_application(appID)
+
+    new_vms = []
+    reserved_entries = []
+    nic_names = []
+    for vm in created_app['design']['vms']:
+        for nic in vm['networkConnections']:
+          nic_id = nic['ipConfig']['id']
+          nic_name = nic['name']
+          nic_ip = hostname_ip_mapping[vm['hostnames'][0]][nic_name]
+          item = {
+                 'ipConfigurationId': nic_id,
+                  'ip': nic_ip
+                 }
+          reserved_entries.append(item)
+        new_services = []
+        if 'suppliedServices' in vm:
+            for svc in vm ['suppliedServices']:
+                svc['useLuidForIpConfig'] = True
+                svc['ipConfigLuid'] = nic_id
+                new_services.append(svc)
+        vm['suppliedServices'] = new_services
+        new_vms.append(vm)
+
+        created_app['design']['network']['services']['dhcpServers'][0]['reservedIpEntries'] = reserved_entries
+
+    created_app['design']['vms'] = new_vms
+
+    new_dhcp = {
+            'mask': '255.255.255.0',
+            'poolStart': '192.168.1.4',
+            'poolEnd': '192.168.1.254'
+            }
+    created_app['design']['network']['services']['dhcpServers'].append(new_dhcp)
+
+    client.update_application(created_app)
+
+    created_app = client.get_application(appID)
+    created_app_file = open("../workdir/app_request.json", "w")
+    created_app_file.write(json.dumps(created_app))
+    created_app_file.close()
+
+
     try:
         blueprint_id=((client.create_blueprint(blueprint_dict))['_href'].split('/'))[2]
         client.delete_application(appID)

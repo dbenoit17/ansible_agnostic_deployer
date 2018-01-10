@@ -67,6 +67,8 @@ class NetworkDevice:
         self.name = name
         self.controller = "virtio"
         self.ip = ip
+        # Default public_ip to false.  Ravello will change 
+        # this automatically based on configured services.
         self.ip_public = False
         self.mac = mac
     def gen_ip_yaml(self, base_indent_level):
@@ -146,6 +148,10 @@ class Vm:
         kwargs['ip'] = from_kwargs(kwargs, 'ip', self.ip)
         s = Service(**kwargs)
         self.services.append(s)
+
+    def add_network_device(self, **kwargs):
+        nd = NetworkDevice(**kwargs)
+        self.network_devices.append(nd)
 
     def vm_core_yaml(self):
         core_yaml = """\

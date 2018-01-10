@@ -18,3 +18,17 @@
       register: hashed_pw
     - name: set passwords
       command: sudo usermod -p {{ hashed_pw.stdout }} root
+- name: Enable dhcp for eth1 on compute node
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_compute') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - name: copy eth0 config to eth1 
+      shell: sudo scp /etc/sysconfig/network-scripts/ifcfg-eth0 /etc/sysconfig/network-scripts/ifcfg-eth1
+    - name: replace eth0 with eth1 inside file
+      shell: sudo sed -i "s/eth0/eth1/g" /etc/sysconfig/network-scripts/ifcfg-eth1
+    - name: restart network services
+      shell: sudo systemctl restart network

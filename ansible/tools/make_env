@@ -13,6 +13,22 @@ if [[ $1 == '--clean' ]]; then
   exit
 fi 
 
+if [[ $1 == '--git-rename' ]]; then
+  OLD_NAME=$2
+  NEW_NAME=$3
+  sed -i "s/$OLD_NAME/$NEW_NAME/g" \
+         $AGNOSTIC_DEPLOYER_ROOT/ansible/tools/deploy/$OLD_NAME
+  git mv $AGNOSTIC_DEPLOYER_ROOT/ansible/configs/$OLD_NAME \
+         $AGNOSTIC_DEPLOYER_ROOT/ansible/configs/$NEW_NAME
+  git mv $AGNOSTIC_DEPLOYER_ROOT/ansible/tools/python_templates/$OLD_NAME.py \
+     $AGNOSTIC_DEPLOYER_ROOT/ansible/tools/python_templates/$NEW_NAME.py
+  git mv $AGNOSTIC_DEPLOYER_ROOT/ansible/software_playbooks/$OLD_NAME.yml \
+     $AGNOSTIC_DEPLOYER_ROOT/ansible/software_playbooks/$NEW_NAME.yml
+  git mv $AGNOSTIC_DEPLOYER_ROOT/ansible/tools/deploy/$OLD_NAME \
+     $AGNOSTIC_DEPLOYER_ROOT/ansible/tools/deploy/$NEW_NAME
+  exit
+fi 
+
 cp -Tnr $AGNOSTIC_DEPLOYER_ROOT/ansible/tools/config-templates/bastion-blank \
         $AGNOSTIC_DEPLOYER_ROOT/ansible/configs/$ENV_NAME && echo "created config $ENV_NAME"
 

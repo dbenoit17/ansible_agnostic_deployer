@@ -44,6 +44,15 @@ vms:
       unit: GB
       value: 100
     type: DISK
+  - index: 2
+    imageName: ScalableInfra - Disk Images
+    boot: False
+    controller: virtio
+    name: images
+    size:
+      unit: GB
+      value: {{ bastion_image_disk_size }}
+    type: DISK
   networkConnections:
   - name: eth0
     device:
@@ -102,15 +111,6 @@ vms:
     size:
       unit: GB
       value: 150
-    type: DISK
-  - index: 1
-    imageName: ScalableInfra - Disk Images
-    boot: False
-    controller: virtio
-    name: images
-    size:
-      unit: GB
-      value: 60
     type: DISK
   networkConnections:
   - name: eth0
@@ -176,15 +176,6 @@ vms:
       unit: GB
       value: 150
     type: DISK
-  - index: 1
-    imageName: ScalableInfra - Disk Images
-    boot: False
-    controller: virtio
-    name: images
-    size:
-      unit: GB
-      value: 60
-    type: DISK
   networkConnections:
   - name: eth0
     device:
@@ -248,15 +239,6 @@ vms:
     size:
       unit: GB
       value: 150
-    type: DISK
-  - index: 1
-    imageName: ScalableInfra - Disk Images
-    boot: False
-    controller: virtio
-    name: images
-    size:
-      unit: GB
-      value: 60
     type: DISK
   networkConnections:
   - name: eth0

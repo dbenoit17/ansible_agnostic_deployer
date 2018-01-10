@@ -6,17 +6,27 @@
 
 RESUME_FROM_CHECKPOINT=""
 CHECKPOINT_SKIP_TAGS=""
-CHECKPOINT_SAVING='off'
+CHECKPOINT_SAVING='on'
 
 # 
 # You do not need to edit anything below this line
 # 
+# for use with ansible_agnostic_deployer
 
 THIS_FILE=`readlink -f $0`
 AGNOSTIC_DEPLOYER_ROOT=$(realpath `dirname $(readlink -f $0)`/../../..)
+GUID=default-user
+ENVID=569
 CLOUDPROVIDER=ravello
 ENVTYPE=rhcls-modernize-devops
 SOFTWARE=rhcls-modernize-devops
+REMOTE_USER=cloud-user
+SSH_USER=cloud-user
+DELETE_APP=false
+OWN_KEY=false
+REPO_VERSION=3.5
+OSRELEASE=''
+ENV_EXPIRE=256
 
 BLUEPRINT_NAME=$ENVTYPE.$RESUME_FROM_CHECKPOINT-bp
 BLUEPRINT_ID=`python $AGNOSTIC_DEPLOYER_ROOT/ansible/tools/bp-id.py $BLUEPRINT_NAME`
@@ -48,15 +58,21 @@ fi
 if [[ "$1" == "--no-increment" ]]; then
      ansible-playbook $AGNOSTIC_DEPLOYER_ROOT/ansible/main.yml \
       -e "env_type=$ENVTYPE" \
-      -e "guid=dbenoit" \
       -e "cloud_provider=$CLOUDPROVIDER" \
       -e "software_to_deploy=$SOFTWARE" \
+      -e "guid=$GUID-`printf '%x' $ENVID`" \
       -e "ANSIBLE_REPO_PATH=$AGNOSTIC_DEPLOYER_ROOT/ansible" \
-       -vvvv  \
+      -e "delete_app_post_deploy=$DELETE_APP" \
+      -e "remote_user=$REMOTE_USER" \
+      -e "ansible_ssh_user=$SSH_USER" \
+      -e "use_own_key=$OWN_KEY" \
+      -e "repo_version=$REPO_VERSION" \
+      -e "env_expire=$ENV_EXPIRE" \
+      -vvvv \
       $CHECKPOINT_ARGS
 else
-  sed -i "s/ENVID=1$ENVID/ENVID=$(($ENVID+1))/" $THIS_FILE
+  sed -i "s/ENVID=$ENVID/ENVID=$(($ENVID+1))/" $THIS_FILE
   script -c "time $THIS_FILE --no-increment" \
-            $AGNOSTIC_DEPLOYER_ROOT/ansible/workdir/$ENVTYPE-$ENVID-output
+            $AGNOSTIC_DEPLOYER_ROOT/ansible/workdir/$ENVTYPE-`printf '%x' $ENVID`-output
 fi
 

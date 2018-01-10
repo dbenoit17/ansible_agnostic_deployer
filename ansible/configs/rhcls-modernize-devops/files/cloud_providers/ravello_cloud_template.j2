@@ -44,48 +44,57 @@ vms:
       unit: GB
       value: 100
     type: DISK
+  - index: 2
+    imageName: ScalableInfra - Disk Images
+    boot: False
+    controller: virtio
+    name: images
+    size:
+      unit: GB
+      value: {{ bastion_image_disk_size }}
+    type: DISK
   networkConnections:
   - name: eth0
     device:
       index: 0
       deviceType: virtio
       useAutomaticMac: False
-      mac: 2c:c2:60:48:bd:62
+      mac: 2c:c2:60:14:42:50
     ipConfig:
       autoIpConfig:
-        reservedIp: 192.168.0.5
+        reservedIp: 10.0.0.5
       hasPublicIp: true
   suppliedServices:
   - external: True
-    ip: 192.168.0.5
+    ip: 10.0.0.5
     name: ssh
     portRange: 22
     protocol: SSH
   - external: True
-    ip: 192.168.0.5
+    ip: 10.0.0.5
     name: dns-t
     portRange: 53
     protocol: TCP
   - external: True
-    ip: 192.168.0.5
+    ip: 10.0.0.5
     name: dns-u
     portRange: 53
     protocol: UDP
   - external: True
-    ip: 192.168.0.5
+    ip: 10.0.0.5
     name: oseapi
-    portRange: 80,8443,8080-8085
+    portRange: 8443,8080
     protocol: TCP
-- name: 1master
-  tag: master
+- name: 1controller
+  tag: controller
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
-  description: "1master\nnohbac: true\n"
-  numCpus: 4
+  description: "1controller\nnohbac: true\n"
+  numCpus: 8
   memorySize:
     unit: GB
-    value: 16
-  hostnames: [master-REPL.rhpds.opentlc.com, master.example.com, master]
+    value: 20
+  hostnames: [controller-REPL.rhpds.opentlc.com, controller.example.com, controller]
   supportsCloudInit: True
   keypairId: 62226455
   keypairName: "opentlc-admin-backdoor"
@@ -111,15 +120,7 @@ vms:
     name: root disk
     size:
       unit: GB
-      value: 80
-    type: DISK
-  - index: 1
-    boot: False
-    controller: virtio
-    name: docker_pool
-    size:
-      unit: GB
-      value: 10
+      value: 100
     type: DISK
   networkConnections:
   - name: eth0
@@ -127,21 +128,27 @@ vms:
       index: 0
       deviceType: virtio
       useAutomaticMac: False
-      mac: 2c:c2:60:7e:d6:b3
+      mac: 2c:c2:60:14:42:51
     ipConfig:
       autoIpConfig:
-        reservedIp: 192.168.0.10
+        reservedIp: 192.168.100.110
       hasPublicIp: true
-- name: 2node1
-  tag: node01
+  suppliedServices:
+  - external: True
+    ip: 192.168.100.110
+    name: dash
+    portRange: 80
+    protocol: TCP
+- name: 2compute
+  tag: compute
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
-  description: "2node1\nnohbac: true\n"
-  numCpus: 4
+  description: "2compute\nnohbac: true\n"
+  numCpus: 8
   memorySize:
     unit: GB
-    value: 12
-  hostnames: [node01-REPL.rhpds.opentlc.com, node01.example.com, node01]
+    value: 64
+  hostnames: [compute-REPL.rhpds.opentlc.com, compute.example.com, compute]
   supportsCloudInit: True
   keypairId: 62226455
   keypairName: "opentlc-admin-backdoor"
@@ -167,15 +174,15 @@ vms:
     name: root disk
     size:
       unit: GB
-      value: 60
+      value: 100
     type: DISK
   - index: 1
     boot: False
     controller: virtio
-    name: docker
+    name: vol
     size:
       unit: GB
-      value: 10
+      value: 200
     type: DISK
   networkConnections:
   - name: eth0
@@ -183,128 +190,31 @@ vms:
       index: 0
       deviceType: virtio
       useAutomaticMac: False
-      mac: 2c:c2:60:43:e9:16
+      mac: 2c:c2:60:14:42:52
     ipConfig:
       autoIpConfig:
-        reservedIp: 192.168.0.11
+        reservedIp: 10.0.0.7
       hasPublicIp: true
-- name: 3node2
-  tag: node02
-  allowNested: {{ allow_nested }}
-  preferPhysicalHost: {{ physical_host }}
-  description: "3node2\nnohbac: true\n"
-  numCpus: 4
-  memorySize:
-    unit: GB
-    value: 12
-  hostnames: [node02-REPL.rhpds.opentlc.com, node02.example.com, node02]
-  supportsCloudInit: True
-  keypairId: 62226455
-  keypairName: "opentlc-admin-backdoor"
-  userData: |
-    #cloud-config
-    ssh_pwauth: False
-    disable_root: False
-    users:
-      - name: "{{ remote_user }}"
-        sudo: ALL=(ALL) NOPASSWD:ALL
-        lock_passwd: False
-        ssh-authorized-keys:
-          - "{{ env_public_key }}"
-    runcmd:
-      - sed -i -e '/^GSSAPIAuthentication/s/^.*$/GSSAPIAuthentication no/' /etc/ssh/sshd_config
-      - sed -i -e '$aUseDNS no' /etc/ssh/sshd_config
-      - systemctl restart sshd
-  hardDrives:
-  - index: 0
-    imageName: rhel-guest-image-7.3-35.x86_64
-    boot: True
-    controller: virtio
-    name: root disk
-    size:
-      unit: GB
-      value: 60
-    type: DISK
-  - index: 1
-    boot: False
-    controller: virtio
-    name: docker
-    size:
-      unit: GB
-      value: 10
-    type: DISK
-  networkConnections:
-  - name: eth0
+  - name: eth1
     device:
-      index: 0
+      index: 1
       deviceType: virtio
       useAutomaticMac: False
-      mac: 2c:c2:60:67:ea:14
+      mac: 2c:c2:60:14:42:b8
     ipConfig:
       autoIpConfig:
-        reservedIp: 192.168.0.12
-      hasPublicIp: true
-- name: 4node3
-  tag: node03
-  allowNested: {{ allow_nested }}
-  preferPhysicalHost: {{ physical_host }}
-  description: "4node3\nnohbac: true\n"
-  numCpus: 4
-  memorySize:
-    unit: GB
-    value: 12
-  hostnames: [node03-REPL.rhpds.opentlc.com, node03.example.com, node03]
-  supportsCloudInit: True
-  keypairId: 62226455
-  keypairName: "opentlc-admin-backdoor"
-  userData: |
-    #cloud-config
-    ssh_pwauth: False
-    disable_root: False
-    users:
-      - name: "{{ remote_user }}"
-        sudo: ALL=(ALL) NOPASSWD:ALL
-        lock_passwd: False
-        ssh-authorized-keys:
-          - "{{ env_public_key }}"
-    runcmd:
-      - sed -i -e '/^GSSAPIAuthentication/s/^.*$/GSSAPIAuthentication no/' /etc/ssh/sshd_config
-      - sed -i -e '$aUseDNS no' /etc/ssh/sshd_config
-      - systemctl restart sshd
-  hardDrives:
-  - index: 0
-    imageName: rhel-guest-image-7.3-35.x86_64
-    boot: True
-    controller: virtio
-    name: root disk
-    size:
-      unit: GB
-      value: 60
-    type: DISK
-  - index: 1
-    boot: False
-    controller: virtio
-    name: docker
-    size:
-      unit: GB
-      value: 10
-    type: DISK
-  networkConnections:
-  - name: eth0
-    device:
-      index: 0
-      deviceType: virtio
-      useAutomaticMac: False
-      mac: 2c:c2:60:7b:f7:e4
-    ipConfig:
-      autoIpConfig:
-        reservedIp: 192.168.0.13
-      hasPublicIp: true
-- name: 5cloudforms
+        reservedIp: 192.168.100.150
+  suppliedServices:
+  - external: False
+    ip: 192.168.100.150
+    name: ssh
+    portRange: 22
+    protocol: SSH
+- name: 3cfme
   tag: cfme
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
-  description: "5cloudforms\nnohbac: true\n"
+  description: "3cfme\nnohbac: true\n"
   numCpus: 4
   memorySize:
     unit: GB
@@ -329,13 +239,13 @@ vms:
       - systemctl restart sshd
   hardDrives:
   - index: 0
-    imageName: disk-image-cfme-vsphere-5.8.1.5-1.x86_64.qcow
+    imageName: rhel-guest-image-7.3-35.x86_64
     boot: True
     controller: virtio
     name: root disk
     size:
       unit: GB
-      value: 60
+      value: 40
     type: DISK
   - index: 1
     boot: False
@@ -351,20 +261,9 @@ vms:
       index: 0
       deviceType: virtio
       useAutomaticMac: False
-      mac: 2c:c2:60:0c:e9:65
+      mac: 2c:c2:60:14:42:53
     ipConfig:
       autoIpConfig:
-        reservedIp: 192.168.0.50
+        reservedIp: 10.0.0.8
       hasPublicIp: true
-  suppliedServices:
-  - external: True
-    ip: 192.168.0.50
-    name: http
-    portRange: 80
-    protocol: TCP
-  - external: True
-    ip: 192.168.0.50
-    name: https
-    portRange: 443
-    protocol: TCP
 
