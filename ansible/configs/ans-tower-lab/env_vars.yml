@@ -17,7 +17,7 @@
 
 repo_method: file # Other Options are: file, satellite and rhn
 windows_password: 'jVMijRwLbI02gFCo2xkjlZ9lxEA7bm7zgg=='
-tower_admin_password: '***REMOVED***'
+tower_admin_password: '{{ example_user_password }}'
 # Do you want to run a full yum update
 update_packages: false
 #If using repo_method: satellite, you must set these values as well.

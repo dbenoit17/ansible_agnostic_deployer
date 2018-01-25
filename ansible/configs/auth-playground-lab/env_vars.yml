@@ -14,7 +14,7 @@ ipa_realm: "{{ ipa_domain|upper }}"
 ipa_directory_manager_password: "{{admin_user_password}}"
 ipa_principal_user_password: "{{admin_user_password}}"
 admin_user: 'admin'
-admin_user_password: '***REMOVED***'
+admin_user_password: '{{ example_user_password }}'
 ###### VARIABLES YOU SHOULD CONFIGURE FOR YOUR DEPLOYEMNT
 ###### OR PASS as "-e" args to ansible-playbook command
 
