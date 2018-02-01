@@ -1,0 +1,8 @@
+=== Dependencies (Ravello Deployment)
+* ansible
+* python-devel
+* gcc
+* libselinux-python
+* python-jmespath
+* python-ravello-sdk
+* python-netaddr
