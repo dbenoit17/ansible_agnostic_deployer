@@ -1,0 +1,228 @@
+#set ft=ansible
+---
+- name: get the default ip of localhost
+  hosts: localhost
+  tasks:
+    - debug:
+        var: ansible_default_ipv4.address
+
+- name: Install additional software on bastion
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - name: Bastion - Install required packages
+      yum:
+        name: "{{ item }}"
+        state: latest
+      with_items: "{{ bastion_packages }}"
+
+- name: Install additional software on osp nodes
+  hosts:
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_compute') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - name: enable epel repositories for python2-pip
+      yum_repository:
+        name: epel
+        description: EPEL YUM repo
+        file: external_repos
+        baseurl: https://download.fedoraproject.org/pub/epel/7/x86_64
+        gpgcheck: no
+      retries: 10
+    #- command: sudo yum clean all
+    - name: OSP - Install required packages
+      yum:
+        name: "{{ item }}"
+        state: latest
+      with_items: "{{ osp_packages }}"
+      retries: 10
+
+- name: Install shade using openstack shade role
+  hosts: 
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_compute') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  roles:
+    - "{{ ANSIBLE_REPO_PATH }}/roles/ansible-role-shade"
+
+- name: Wait for full environment readiness
+  hosts: 
+    - "{{ ('tag_Project_' ~ env_type ~ '_' ~ guid) | replace('-', '_') }}"
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  gather_facts: false
+  any_errors_fatal: True
+  become: true
+  tags:
+    - step001
+    - wait_ssh
+    - set_hostname
+  tasks:
+    - name: wait for host to be available and set hostnames
+      wait_for:
+        host: '{{ inventory_hostname }}'
+        port: 22
+        search_regex: OpenSSH
+      delegate_to: "{{ (hostvars['localhost']['groups'][('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_')].0) }}"
+      become: false
+      connection: local
+    - debug:
+        msg: "{{hostvars[inventory_hostname]}}"
+    - name: Set hostname based on ec2_tag_internaldns
+      hostname:
+        name: "{{inventory_hostname}}"
+
+- name: Wait for SSH connection to be released
+  hosts: localhost
+  tasks:
+    - pause:
+        seconds: 3
+
+- name: Configure enabled services
+  hosts: 
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_OSP_Nodes') | replace('-', '_') }}"
+  become: true
+  vars:
+    - enabled_services:
+        - ntpd
+        - nfs
+    - disabled_services:
+        - avahi-daemon
+        - chronyd
+        - firewalld
+        - cups
+        - libvirtd
+        - ModemManager
+        - oddjobd
+        - postfix
+        - wpa_supplicant
+        - NetworkManager
+
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - name: Enabling custom services
+      systemd:
+        state: started
+        enabled: yes
+        name: "{{ item }}"
+      with_items: "{{ enabled_services | default([])}}"
+      when: enabled_services is defined
+    - name: Stopping and disabling systemd services which are not needed
+      ignore_errors: yes
+      systemd:
+        state: stopped
+        enabled: no
+        name: "{{ item }}"
+      with_items: "{{ disabled_services }}"
+
+- name: Create directories for nfs exports
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+  become: true
+  vars:
+    - nfs_exports:
+        - "{{ glance_image_url }}"
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - name: get image disk device name
+      shell: "lsblk | gawk 'match($0, /{{ bastion_image_disk_size }}/) {print $1; exit}'"
+      register: image_disk_name
+    - name: mount image disk on controller
+      mount:
+        src: "/dev/{{ image_disk_name.stdout }}"
+        name: "{{ glance_image_url }}"
+        fstype: ext4
+        state: mounted
+
+- name: generate ssl certs
+  hosts: localhost
+  become: false
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+  - command: 'openssl req -subj "/C=XX/ST=XX/L=XX/O=XX/OU=IT Department/CN=XX" -x509 -sha256 -newkey rsa:2048 -keyout {{ ANSIBLE_REPO_PATH }}/workdir/selfkey-{{ guid }}.key -out {{ ANSIBLE_REPO_PATH }}/workdir/selfcert-{{ guid }}.crt -days 1024 -nodes'
+
+- name: Install OSP
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+  become: true
+  vars:
+    - host_tag: "{{ inventory_hostname | replace('-REPL.rhpds.opentlc.com', '') }}"
+    - answers_file_url: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/packstack/answers.j2"
+    - answers_file: /home/{{ remote_user }}/answers.txt
+    - glance_image_destination: "{{ glance_image_url }}"
+    - glance_images:
+        - { name: 'master', src: 'rhel.qcow2',dest: 'master.qcow2', flavor: 'm1.small' }
+        - { name: 'node01', src: 'rhel.qcow2',dest: 'node01.qcow2', flavor: 'm1.small' }
+        - { name: 'node02', src: 'rhel.qcow2',dest: 'node02.qcow2', flavor: 'm1.small' }
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - name: copy ssl cert to OSP Nodes
+      copy:
+        src: "{{ ANSIBLE_REPO_PATH }}/workdir/selfcert-{{ guid }}.crt"
+        dest: /etc/pki/tls/certs/selfcert.crt
+    - name: copy ssl cert to OSP Nodes
+      copy:
+        src: "{{ ANSIBLE_REPO_PATH }}/workdir/selfcert-{{ guid }}.crt"
+        dest: /etc/pki/tls/certs/packstack_cacert.crt
+    - name: copy ssl key to OSP Nodes
+      copy:
+        src: "{{ ANSIBLE_REPO_PATH }}/workdir/selfkey-{{ guid }}.key"
+        dest: /etc/pki/tls/private/selfkey.key
+    - name: Capture answers file for all-in-one OSP install
+      template:
+        src: "{{ answers_file_url }}" 
+        dest: "{{ answers_file }}"
+      notify: restart httpd
+    - name: create /data/db dir
+      file:
+        path: /data/db
+        state: directory
+        recurse: yes
+    - name: Install OSP using answers file
+      command: /usr/bin/packstack --answer-file={{answers_file}}
+    - lineinfile:
+        dest: /etc/nova/nova.conf
+        regexp: '^#resume_guests_state_on_host_boot=false'
+        line: 'resume_guests_state_on_host_boot=true'
+  #  - lineinfile:
+  #      dest: /etc/nova/nova.conf
+  #      regexp: '^#compute_driver=libvirt.LibvirtDriver'
+  #      line: 'compute_driver=libvirt.LibvirtDriver'
+    - shell: systemctl restart openstack-nova-*
+    - lineinfile:
+        dest: /etc/httpd/conf.d/15-horizon_vhost.conf
+        insertbefore: '^  ServerAlias localhost'
+        line: '  ServerAlias *.srv.ravcloud.com'
+      notify: restart httpd
+  handlers:
+    - name: restart httpd
+      service:
+        name: httpd
+        state: restarted
+

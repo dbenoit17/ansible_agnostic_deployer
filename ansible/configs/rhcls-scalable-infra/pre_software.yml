@@ -1,0 +1,159 @@
+
+- name: Step 003 - Create env key
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+  tags:
+    - step003
+    - generate_env_keys
+  tasks:
+    - name: Generate SSH keys
+      shell: ssh-keygen -b 2048 -t rsa -f "{{ ANSIBLE_REPO_PATH }}/workdir/{{env_authorized_key}}" -q -N ""
+      args:
+        creates: "{{ ANSIBLE_REPO_PATH }}/workdir/{{env_authorized_key}}"
+      when: set_env_authorized_key
+
+# Cloudformation template or equivalent should tag all hosts with Project:{{ env_type }}-{{ guid }}
+#
+- name: Configure all hosts with Repositories, Common Files and Set environment key
+  hosts: "{{ ('tag_Project_' ~ env_type ~ '_' ~ guid) | replace('-', '_') }}"
+  become: true
+  gather_facts: False
+  vars:
+    - attach_pool_retries: 25
+    - register_node_retries: 25
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tags:
+    - step004
+    - common_tasks
+  roles:
+    - { role: "{{ ANSIBLE_REPO_PATH }}/roles/set-repositories", when: 'repo_method is defined' }
+
+
+- name: Update software on bastion and osp nodees
+  hosts: 
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_OSP_Nodes') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - yum:
+        name: "*"
+        state: latest
+
+- name: Reboot ocp nodes
+  hosts: 
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_OSP_Nodes') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tags:
+    - checkpoint0
+  tasks:
+    - name: reboot updated systems
+      shell: sudo /usr/bin/systemd-run --on-active=10 /usr/bin/systemctl reboot
+
+- name: Reboot bastion
+  hosts: 
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tags:
+    - checkpoint0
+  tasks:
+    - name: reboot updated systems
+      shell: sudo /usr/bin/systemd-run --on-active=10 /usr/bin/systemctl reboot
+
+- name: Wait for Systems to reboot
+  hosts: localhost
+  tasks:
+    - pause:
+        seconds: 30
+
+- name: Wait for bastion readiness
+  hosts: localhost
+  tasks:
+    - wait_for:
+        port: 22
+        host: "{{ (groups[('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion_public') | replace('-', '_')]).0 }}"
+        search_regex: OpenSSH
+        delay: 30
+
+- name: Wait for SSH connection to be released
+  hosts: localhost
+  tasks:
+    - pause:
+        seconds: 3
+
+- name: Wait for full environment readiness
+  hosts: 
+    - "{{ ('tag_Project_' ~ env_type ~ '_' ~ guid) | replace('-', '_') }}"
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  gather_facts: false
+  any_errors_fatal: True
+  become: true
+  tasks:
+    - name: wait for host to be available and set hostnames
+      wait_for:
+        host: '{{ inventory_hostname }}'
+        port: 22
+        search_regex: OpenSSH
+      delegate_to: "{{ (hostvars['localhost']['groups'][('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion_public') | replace('-', '_')].0) }}"
+      become: false
+    - debug:
+        msg: "{{hostvars[inventory_hostname]}}"
+    - name: Set hostname based on ec2_tag_internaldns
+      hostname:
+        name: "{{inventory_hostname}}"
+
+- name: Wait for SSH connection to be released
+  hosts: localhost
+  tasks:
+    - pause:
+        seconds: 3
+
+- name: Install additional software on bastion
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
+  become: true
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - name: Bastion - Install required packages
+      yum:
+        name: "{{ item }}"
+        state: latest
+      with_items: "{{ bastion_packages }}"
+
+- name: PreSoftware flight-check
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+  tags:
+    - flight_check
+  tasks:
+    - debug:
+        msg: "Pre-Software checks completed successfully"
