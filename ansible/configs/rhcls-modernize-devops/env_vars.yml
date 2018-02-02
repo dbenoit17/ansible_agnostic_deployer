@@ -80,6 +80,8 @@ common_packages:
   - ansible
   - git
   - vim-enhanced
+  - atomic-openshift-utils
+  - atomic-openshift-clients
 
 bastion_packages:
   - nfs-utils
@@ -99,7 +101,7 @@ osp_packages:
 rhel_repos:
   - rhel-7-server-rpms
   - rhel-7-server-extras-rpms
-  - rhel-7-server-ose-{{repo_version}}-rpms
+  - rhel-7-server-ose-3.7-rpms
   - rhel-7-fast-datapath-rpms
   - rhel-7-server-rh-common-rpms
   - rhel-ha-for-rhel-7-server-rpms
