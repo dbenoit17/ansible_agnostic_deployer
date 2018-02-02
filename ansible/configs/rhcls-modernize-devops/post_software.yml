@@ -148,6 +148,19 @@
     - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
   tasks:
     - name: launch compute instance
+      os_nova_flavor:
+        auth:
+          auth_url: '{{ os_auth_url }}'
+          username: admin
+          password: "{{ default_password }}"
+          project_name: admin
+          default_domain_name: Default
+        state: present
+        name: m2.big
+        vcpus: 8
+        ram: 20
+        disk: 50
+    - name: launch compute instance
       os_server:
         auth:
           auth_url: '{{ os_auth_url }}'
