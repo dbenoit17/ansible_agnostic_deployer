@@ -168,15 +168,21 @@ import logging.handlers
 ##### Ravello API Wrappers #####
 
 def set_cost_bucket(appID, appType, cost_bucket_name, client):
-    available_cbs = ''
-    for cost_bucket in client.get_cost_buckets(permissions='execute'):
-        available_cbs = available_cbs + ', ' + cost_bucket['name']
+    available_cbs = []
+    cost_buckets =  client.get_cost_buckets(permissions='execute')
+    for cost_bucket in cost_buckets:
+        available_cbs.append(cost_bucket['name'])
         if cost_bucket['name'] == cost_bucket_name:
             client.associate_resource_to_cost_bucket(
                          cost_bucket['id'], 
                          {'resourceId': appID, 'resourceType': appType}) 
             return
-    raise Exception("Cost Bucket: " + cost_bucket_name + " - not found.  Available cost buckets: " + available_cbs)
+    if (cost_bucket_name == "Default") and (len(cost_buckets) >= 1):
+        client.associate_resource_to_cost_bucket(
+            cost_buckets[0]['id'], 
+            {'resourceId': appID, 'resourceType': appType}) 
+        return
+    raise Exception("Cost Bucket: " + cost_bucket_name + " - not found.  Available cost buckets: " + ', '.join(available_cbs))
     return
 
 def get_credentials():
@@ -284,7 +290,7 @@ def main():
             blueprint_name=dict(required=False, type='str'),
             wait=dict(type='bool', default=True ,choices=BOOLEANS),
             wait_timeout=dict(default=1200, type='int'),
-            cost_bucket=dict(default='Organization', type='str')
+            cost_bucket=dict(default='Default', type='str')
     )
     module = AnsibleModule(
         argument_spec=argument_spec,

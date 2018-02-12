@@ -64,7 +64,7 @@
   become: false
   vars:
     - ssh_password_auth: False
-    - ravello_cost_bucket: Organization
+    - ravello_cost_bucket: Default
     - publish_optimization: cost
     - publish_region: default
     - publish_cloud: default

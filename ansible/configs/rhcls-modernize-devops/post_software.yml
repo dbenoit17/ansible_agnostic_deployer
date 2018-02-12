@@ -124,12 +124,6 @@
         name: httpd
         state: restarted
 
-- name: Wait for openstack services
-  hosts: localhost
-  tasks:
-    - pause:
-        seconds: 300
-
 - name: Launch OSP Instances
   hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
   become: true
@@ -139,15 +133,13 @@
     - answers_file: /home/{{ remote_user }}/answers.txt
     - glance_image_destination: "{{ glance_image_url }}"
     - glance_images:
-        - { name: 'master', src: 'rhel.qcow2',dest: 'rhel.qcow2', flavor: 'm1.small' }
-        - { name: 'node01', src: 'rhel.qcow2',dest: 'rhel.qcow2', flavor: 'm1.small' }
-        - { name: 'node02', src: 'rhel.qcow2',dest: 'rhel.qcow2', flavor: 'm1.small' }
+        - { name: '{{ ocp_master_hostname }}', src: 'rhel.qcow2',dest: 'rhel.qcow2', flavor: 'm2.big' }
   vars_files:
     - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
     - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
     - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
   tasks:
-    - name: launch compute instance
+    - name: create nova flavor
       os_nova_flavor:
         auth:
           auth_url: '{{ os_auth_url }}'
@@ -177,6 +169,20 @@
         name: "{{ item.name }}"
         network:  int_network
       with_items: "{{ glance_images }}"
+    - name: add bastion public hostname
+      add_host:
+        name: "{{ ocp_master_hostname }}"
+        groups: 
+        - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_master') | replace('-', '_') }}"
+        - "{{ ('tag_Project_' ~ env_type ~ '_' ~ guid) | replace('-', '_') }}"
+
+- name: Test access to ocp master
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_master') | replace('-', '_') }}"
+  become: true
+  tasks:
+    - copy:
+        content: "hello from master?"
+        dest: /etc/motd
 
 - name: PostSoftware flight-check
   hosts: localhost

@@ -18,13 +18,44 @@
         src: "{{ ANSIBLE_REPO_PATH }}/workdir/{{ env_authorized_key }}.pub"
         mode: 0600
 
-- name: Configure all hosts with Repositories, Common Files and Set environment key
-  hosts: "{{ ('tag_Project_' ~ env_type ~ '_' ~ guid) | replace('-', '_') }}"
+- name: Configure bastion with Repositories, Common Files and Set environment key
+  hosts: 
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
   become: true
   gather_facts: False
   vars:
     - attach_pool_retries: 25
     - register_node_retries: 25
+#    - common_repos:
+#        - rhel-7-server-rpms
+##    - openshift_repos:
+##        - rhel-7-server-ose-3.7-rpms
+    - rhel_repos: "{{ common_repos + openshift_repos }}"   
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tags:
+    - step004
+    - common_tasks
+    - checkpoint0
+  roles:
+    - { role: "{{ ANSIBLE_REPO_PATH }}/roles/set-repositories" }
+
+- name: Configure bastion with Repositories, Common Files and Set environment key
+  hosts: 
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+  become: true
+  gather_facts: False
+  vars:
+    - attach_pool_retries: 25
+    - register_node_retries: 25
+#    - common_repos:
+#        - rhel-7-server-rpms
+#    - openstack_repos:
+#        - rhel-7-server-openstack-12-rpms
+#        - rhel-7-server-openstack-12-devtools-rpms
+    - rhel_repos: "{{ common_repos + openstack_repos }}"   
   vars_files:
     - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
     - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
@@ -40,7 +71,6 @@
   hosts: 
     - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
     - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
-    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_compute') | replace('-', '_') }}"
   become: true
   vars_files:
     - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
@@ -50,6 +80,7 @@
     - yum:
         name: "*"
         state: latest
+        allow_downgrade: true
 
 - name: Reboot ocp nodes
   hosts: 

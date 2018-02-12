@@ -12,6 +12,7 @@
 
 any_errors_fatal: True
 
+ocp_master_hostname: master.example.com
 
 delete_app_post_deploy: false
 
@@ -98,15 +99,17 @@ osp_packages:
   - openssl-devel
   - python2-pip
 
-rhel_repos:
-  - rhel-7-server-rpms
-  - rhel-7-server-extras-rpms
-  - rhel-7-server-ose-3.7-rpms
-  - rhel-7-fast-datapath-rpms
-  - rhel-7-server-rh-common-rpms
-  - rhel-ha-for-rhel-7-server-rpms
+
+openstack_repos:
   - rhel-7-server-openstack-12-rpms
   - rhel-7-server-openstack-12-devtools-rpms
+
+common_repos:
+  - rhel-7-server-rpms
+  - rhel-7-server-rh-common-rpms
+  - rhel-7-server-extras-rpms
+openshift_repos:
+  - rhel-7-server-ose-3.7-rpms
 
 use_subscription_manager: true
 use_own_repos: true
