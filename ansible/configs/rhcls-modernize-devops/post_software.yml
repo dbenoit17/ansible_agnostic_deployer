@@ -82,37 +82,54 @@
         owner: root
     - os_network:
         auth:
-          auth_url: '{{ os_auth_url }}'
+          auth_url: http://{{ ansible_default_ipv4.address }}:5000/v2.0
           username: admin
           password: "{{ default_password }}"
           project_name: admin
           default_domain_name: Default
         state: present
-        name: int_network
-        external: false
+        name: public
+        external: true
         shared: true
+        provider_physical_network: extnet
+        provider_network_type: flat
     - os_subnet:
         auth:
-          auth_url: '{{ os_auth_url }}'
+          auth_url: http://{{ ansible_default_ipv4.address }}:5000/v2.0
           username: admin
           password: "{{ default_password }}"
           project_name: admin
           default_domain_name: Default
         state: present
-        network_name: int_network
-        name: int_subnet1
+        network_name: public
+        name: public_subnet
         cidr: 192.168.20.0/24
-    - os_router:
+        allocation_pool_start: 192.168.20.100
+        allocation_pool_end: 192.168.20.200
+    - os_security_group_rule:
         auth:
-          auth_url:  '{{ os_auth_url }}'
+          auth_url: http://{{ ansible_default_ipv4.address }}:5000/v2.0
           username: admin
           password: "{{ default_password }}"
           project_name: admin
           default_domain_name: Default
-        state: present
-        name: osp-router
-        interfaces:
-        - int_subnet1
+        security_group: default
+        protocol: tcp
+        port_range_min: -1
+        port_range_max: -1
+        remote_ip_prefix: 0.0.0.0/0
+    - os_security_group_rule:
+        auth:
+          auth_url: http://{{ ansible_default_ipv4.address }}:5000/v2.0
+          username: admin
+          password: "{{ default_password }}"
+          project_name: admin
+          default_domain_name: Default
+        security_group: default
+        protocol: icmp
+        port_range_min: -1
+        port_range_max: -1
+        remote_ip_prefix: 0.0.0.0/0
     - shell: systemctl restart openstack-nova-*
     - shell: systemctl restart mariadb
     - shell: systemctl restart openstack-neutron*
@@ -167,7 +184,6 @@
         image: "{{ item.src }}"
         flavor: "{{ item.flavor }}"
         name: "{{ item.name }}"
-        network:  int_network
       with_items: "{{ glance_images }}"
     - name: add bastion public hostname
       add_host:

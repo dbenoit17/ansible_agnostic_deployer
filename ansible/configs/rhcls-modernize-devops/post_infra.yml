@@ -18,17 +18,26 @@
       register: hashed_pw
     - name: set passwords
       command: sudo usermod -p {{ hashed_pw.stdout }} root
+    - shell: "ip addr show eth1 | gawk 'match($0, /link\\/ether/) {print $2}'"
+      register: cntrlr_eth1_mac_output
 - name: Enable dhcp for eth1 on compute node
-  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_compute') | replace('-', '_') }}"
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
   become: true
+  vars:
+    - controller_eth1_hwaddr: "{{ cntrlr_eth1_mac_output.stdout }}"
   vars_files:
     - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
     - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
     - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
   tasks:
-    - name: copy eth0 config to eth1 
-      shell: sudo scp /etc/sysconfig/network-scripts/ifcfg-eth0 /etc/sysconfig/network-scripts/ifcfg-eth1
-    - name: replace eth0 with eth1 inside file
-      shell: sudo sed -i "s/eth0/eth1/g" /etc/sysconfig/network-scripts/ifcfg-eth1
-    - name: restart network services
-      shell: sudo systemctl restart network
+    - debug:
+        var: controller_eth1_hwaddr
+    - template:
+        src: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/ifcfg-eth1"
+        dest: "/etc/sysconfig/network-scripts/ifcfg-eth1"
+    - template:
+        src: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/ifcfg-br-ex"
+        dest: "/etc/sysconfig/network-scripts/ifcfg-br-ex"
+    - lineinfile:
+        dest: /etc/sysconfig/network-scripts/ifcfg-eth0
+        line: 'IPV6INIT=NO'

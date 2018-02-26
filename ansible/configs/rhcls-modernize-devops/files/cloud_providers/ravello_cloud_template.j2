@@ -44,6 +44,14 @@ vms:
       unit: GB
       value: 100
     type: DISK
+  - index: 2
+    boot: False
+    controller: virtio
+    name: ocp_cinder
+    size:
+      unit: GB
+      value: 100
+    type: DISK
   networkConnections:
   - name: eth0
     device:
@@ -81,10 +89,10 @@ vms:
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "1controller\nnohbac: true\n"
-  numCpus: 8
+  numCpus: 12
   memorySize:
     unit: GB
-    value: 20
+    value: 48
   hostnames: [controller-REPL.rhpds.opentlc.com, controller.example.com, controller]
   supportsCloudInit: True
   keypairId: 62226455

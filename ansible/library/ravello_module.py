@@ -166,9 +166,8 @@ import logging
 import logging.handlers
 
 ##### Ravello API Wrappers #####
-
 def set_cost_bucket(appID, appType, cost_bucket_name, client):
-    available_cbs = []
+    available_cbs = [] 
     cost_buckets =  client.get_cost_buckets(permissions='execute')
     for cost_bucket in cost_buckets:
         available_cbs.append(cost_bucket['name'])
@@ -290,7 +289,7 @@ def main():
             blueprint_name=dict(required=False, type='str'),
             wait=dict(type='bool', default=True ,choices=BOOLEANS),
             wait_timeout=dict(default=1200, type='int'),
-            cost_bucket=dict(default='Default', type='str')
+            cost_bucket=dict(default='Organization', type='str')
     )
     module = AnsibleModule(
         argument_spec=argument_spec,
@@ -594,6 +593,7 @@ def create_app_and_publish(client, module):
     client.publish_application(app, req)
     set_cost_bucket(app['id'], 'application', 
             module.params.get('cost_bucket'), client)
+    get_vm_hostnames(app['id'], client, module)
     _wait_for_state(client,'STARTED',module)
     log_contents = log_capture_string.getvalue()
     log_capture_string.close()
@@ -601,6 +601,18 @@ def create_app_and_publish(client, module):
             app_name='%s' % module.params.get("app_name"),
             stdout='%s' % log_contents, 
             app_id='%s' % app['id'])
+
+def get_vm_hostnames(app_id, client, module):
+    published_app = client.get_application(app_id, aspect='deployment')
+    vm_hostname_dict = {}
+    for vm in ravello_template_get(published_app, 'deployment.vms'):
+       if len(vm['hostnames']) < 1:
+           module.fail_json(msg="Could not obtain vm hostname list from app." +  
+                                 "VMs must contain at least one internal hostname.")
+       hostname = vm['hostnames'][0] 
+       vm_hostname_dict[hostname] = {}
+       vm_hostname_dict[hostname]['internal'] = vm['hostnames']
+       vm_hostname_dict[hostname]['external'] = vm['externalFqdn']
 
 # import module snippets
 import ansible
@@ -750,13 +762,12 @@ def create_subnet_with_ip_pool(client, module, appID, netip):
     ravello_template_set(created_app, new_subnet_path + '.mask', str(netip.netmask))
     ravello_template_set(created_app, new_subnet_path + '.net', str(netip[0]))
     new_switch_network_segment_id = \
-            app_json_lookup(created_app, 
+            ravello_template_get(created_app, 
                 new_switch_path + '.networkSegments.0.id')
     ravello_template_set(created_app, 
             new_subnet_path + '.networkSegmentId', 
             new_switch_network_segment_id)
     client.update_application(created_app)
-
     created_app = client.get_application(appID)
     check_for_param(created_app, 'design.network.services.networkInterfaces', 
             default_if_missing=[])
@@ -781,14 +792,14 @@ def create_subnet_with_ip_pool(client, module, appID, netip):
     check_for_param(created_app, 
             'design.network.services.routers.0.ipConfigurationIds',
             default_if_missing=[])
-    router_ip_config_ids = app_json_lookup(created_app,
+    router_ip_config_ids = ravello_template_get(created_app,
             'design.network.services.routers.0.ipConfigurationIds')
-    router_ip_config_ids.append(app_json_lookup(created_app,
+    router_ip_config_ids.append(ravello_template_get(created_app,
                 new_l3_nic_path + '.ipConfigurations.1.id'))
-    if 'ports' not in app_json_lookup(created_app, new_switch_path):
+    if 'ports' not in ravello_template_get(created_app, new_switch_path):
         ravello_template_set(created_app, new_switch_path + '.ports', [])
     create_port_on_switch(created_app, new_switch_path,
-            app_json_lookup(created_app,
+            ravello_template_get(created_app,
                 new_l3_nic_path + '.id'),
             'SERVICES')
     client.update_application(created_app)
@@ -801,18 +812,18 @@ def create_subnet_with_ip_pool(client, module, appID, netip):
     ravello_template_set(created_app, new_dhcp_path + '.poolStart', str(netip[0]))
     ravello_template_set(created_app, new_dhcp_path + '.poolEnd', str(netip[-1]))
     ravello_template_set(created_app, new_dhcp_path + '.ipConfigurationId', 
-            app_json_lookup(created_app, new_l3_nic_path + '.ipConfigurations.0.id'))
+            ravello_template_get(created_app, new_l3_nic_path + '.ipConfigurations.0.id'))
     ravello_template_set(created_app, new_dhcp_path + '.gatewayIpConfigurationId', 
-            app_json_lookup(created_app, new_l3_nic_path + '.ipConfigurations.1.id'))
+            ravello_template_get(created_app, new_l3_nic_path + '.ipConfigurations.1.id'))
     check_for_param(created_app, 
             'design.network.services.dnsServers.0.ipConfigurationIds',
             default_if_missing=[])
-    dns_ip_config_ids = app_json_lookup(created_app,
+    dns_ip_config_ids = ravello_template_get(created_app,
             'design.network.services.dnsServers.0.ipConfigurationIds')
-    dns_ip_config_ids.append(app_json_lookup(created_app, 
+    dns_ip_config_ids.append(ravello_template_get(created_app, 
         new_l3_nic_path + '.ipConfigurations.0.id'))
     ravello_template_set(created_app, new_dhcp_path + '.dnsIpConfigurationId', 
-            app_json_lookup(created_app, new_l3_nic_path + '.ipConfigurations.0.id'))
+            ravello_template_get(created_app, new_l3_nic_path + '.ipConfigurations.0.id'))
     client.update_application(created_app)
 
 def delete_autogenerated_subnet(client, module, appID):
@@ -838,7 +849,7 @@ def create_port_on_switch(created_app, switch_path, device_id, device_type):
             int(port_path.split('.')[-1]) + 1)
     ravello_template_set(created_app,
             port_path + '.networkSegmentReferences.0.networkSegmentId',
-            app_json_lookup(created_app,
+            ravello_template_get(created_app,
                 switch_path + '.networkSegments.0.id'))
     ravello_template_set(created_app,
             port_path + '.networkSegmentReferences.0.anyNetworksegment',
@@ -849,7 +860,7 @@ def create_port_on_switch(created_app, switch_path, device_id, device_type):
     return
 
 def path_for_next_item(app_json, jspath):
-    return jspath + '.' + str(len(app_json_lookup(app_json, jspath)))
+    return jspath + '.' + str(len(ravello_template_get(app_json, jspath)))
 
 def path_from_ip(created_app, path_map, ip_addr):
     for net_block, path in path_map.iteritems():
@@ -858,7 +869,7 @@ def path_from_ip(created_app, path_map, ip_addr):
     raise Exception('no subnet for ip: ' + ip_addr + '...' + json.dumps(path_map))
 
 def create_dhcp_ip_map(created_app):
-    dhcp_servers = app_json_lookup(created_app,
+    dhcp_servers = ravello_template_get(created_app,
             'design.network.services.dhcpServers')
     ip_index_map = {}
     for i, dhcp in enumerate(dhcp_servers):
@@ -869,7 +880,7 @@ def create_dhcp_ip_map(created_app):
     return ip_index_map
 
 def create_subnet_ip_map(created_app):
-    subnets = app_json_lookup(created_app,
+    subnets = ravello_template_get(created_app,
             'design.network.subnets')
     ip_index_map = {}
     for i, subnet in enumerate(subnets):
@@ -880,9 +891,9 @@ def create_subnet_ip_map(created_app):
     return ip_index_map
 
 def switch_path_from_ip(created_app, subnet_ip_map, ip_addr):
-    network_segment_id = app_json_lookup(created_app,
+    network_segment_id = ravello_template_get(created_app,
         path_from_ip(created_app, subnet_ip_map, ip_addr) + '.networkSegmentId')
-    switches = app_json_lookup(created_app,
+    switches = ravello_template_get(created_app,
         'design.network.switches')
     for i, switch in enumerate(switches):
         if switch['networkSegments'][0]['id'] == network_segment_id:
@@ -891,7 +902,7 @@ def switch_path_from_ip(created_app, subnet_ip_map, ip_addr):
 
 
 def json_path_list_append(json_item, jspath, value):
-    item_list = app_json_lookup(json_item, jspath)
+    item_list = ravello_template_get(json_item, jspath)
     item_list.append(value)
 
 def update_app_with_internal_luids(client, module, app_request, appID):
@@ -900,9 +911,9 @@ def update_app_with_internal_luids(client, module, app_request, appID):
     reserved_entries = []
     hostname_ip_mapping = {}
     dhcp_ip_mapping = create_dhcp_ip_map(created_app)
-    original_subnet_config_ids = app_json_lookup(created_app,
+    original_subnet_config_ids = ravello_template_get(created_app,
             'design.network.subnets.0.ipConfigurationIds')
-    original_switch_ports = app_json_lookup(created_app,
+    original_switch_ports = ravello_template_get(created_app,
             'design.network.switches.0.ports')
     subnet_ip_mapping = create_subnet_ip_map(created_app)
     for dhcp in created_app['design']['network']['services']['dhcpServers']:
@@ -1035,7 +1046,7 @@ def json_head_contains(json_item, key):
     else:
         return (key in json_item)
 
-def app_json_lookup(json_item, jspath_str, **kwargs):
+def ravello_template_get(json_item, jspath_str, **kwargs):
     jspath = re.split(r'(?<!\\)\.', jspath_str)
     def recur(json_slice, jspath):
         if len(jspath) > 1:

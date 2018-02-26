@@ -110,12 +110,12 @@
 - name: Configure enabled services
   hosts: 
     - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_') }}"
-    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_OSP_Nodes') | replace('-', '_') }}"
+    - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
   become: true
   vars:
     - enabled_services:
-        - ntpd
         - nfs
+        #- ntpd
     - disabled_services:
         - avahi-daemon
         - chronyd
@@ -224,11 +224,19 @@
         dest: /etc/nova/nova.conf
         regexp: '^#resume_guests_state_on_host_boot=false'
         line: 'resume_guests_state_on_host_boot=true'
-  #  - lineinfile:
-  #      dest: /etc/nova/nova.conf
-  #      regexp: '^#compute_driver=libvirt.LibvirtDriver'
-  #      line: 'compute_driver=libvirt.LibvirtDriver'
-    - shell: systemctl restart openstack-nova-*
+    - lineinfile:
+        dest: /etc/nova/nova.conf
+        regexp: '^virt_type=qemu'
+        line: 'virt_type=kvm'
+    - lineinfile:
+        dest: /etc/neutron/plugins/ml2/ml2_conf.ini
+        regexp: '^extension_drivers=port_security'
+        line: '#extension_drivers=port_security'
+    - lineinfile:
+        dest: /etc/neutron/dhcp_agent.ini
+        regexp: '^enable_isolated_metadata=False'
+        line: 'enable_isolated_metadata=true'
+    - shell: systemctl restart openstack-nova-* openstack-neutron-*
     - lineinfile:
         dest: /etc/httpd/conf.d/15-horizon_vhost.conf
         insertbefore: '^  ServerAlias localhost'

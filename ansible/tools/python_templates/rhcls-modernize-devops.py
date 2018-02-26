@@ -14,11 +14,13 @@ bastion.add_hard_drive(name='vol', size=100)
 
 controller = ravello.Vm(name="1controller", tag="controller", boot_disk_size_GB=100, 
                      ip="10.0.0.10", mac="2c:c2:60:14:42:51",
-                     num_cpus=8, mem_size=20)
-controller.add_service(name='dash', external=True, port_range=80, protocol='TCP')
+                     num_cpus=12, mem_size=48)
 controller.add_hard_drive(name='images', size="{{ bastion_image_disk_size }}", 
                        image='ScalableInfra - Disk Images')
+bastion.add_hard_drive(name='ocp_cinder', size=100)
 controller.add_network_device(name="eth1", ip="192.168.100.110", mac="2c:c2:60:14:42:b8")
+controller.add_service(name='dash', external=True, port_range=80, 
+                       protocol='TCP', ip='10.0.0.10')
 
 
 cloudforms = ravello.Vm(name="3cfme", tag="cfme", boot_disk_size_GB=40, 
