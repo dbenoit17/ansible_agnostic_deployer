@@ -28,6 +28,11 @@
         name: "{{ item }}"
         state: latest
       with_items: "{{ osp_packages }}"
+    - name: restart network
+      systemd:
+        state: restarted
+        enabled: yes
+        name: "network"
 
 - name: Install shade using openstack shade role
   hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_OSP_Nodes') | replace('-', '_') }}"
@@ -54,7 +59,7 @@
     - wait_ssh
     - set_hostname
   tasks:
-    - name: wait for host to be available and set hostnames
+    - name: wait for host to be available
       wait_for:
         host: '{{ inventory_hostname }}'
         port: 22
@@ -63,9 +68,6 @@
       become: false
     - debug:
         msg: "{{hostvars[inventory_hostname]}}"
-    - name: Set hostname based on ec2_tag_internaldns
-      hostname:
-        name: "{{inventory_hostname}}"
 
 - name: Wait for SSH connection to be released
   hosts: localhost

@@ -28,4 +28,4 @@ def main():
         client = RavelloClient(username, password)
         print(get_blueprint_id(sys.argv[1], client))
         
-main()
+#main()

@@ -8,6 +8,10 @@
   tags:
     - checkpoint-resume
   vars:
+    - instance:
+        tags:
+          - key: "AnsibleGroup"
+            value: "all_hosts"
     - cloud_template: "{{ lookup( 'file', '{{ ANSIBLE_REPO_PATH }}/workdir/{{cloud_provider}}_cloud_template.{{ env_type }}.{{ guid }}.template') | from_yaml }}"
     # Extra host groups cant be undefined, so 
     # define a dummy bastion group.  
@@ -24,8 +28,9 @@
       add_host:
         name: "{{ ravello_groups | json_query('_meta.hostvars.\"' ~ bastion_assigned_hostname ~ '\".externalFqdn') }}"
         groups: 
-        - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion_public') | replace('-', '_') }}"
-        - "{{ ('tag_Project_' ~ env_type ~ '_' ~ guid) | replace('-', '_') }}"
+          - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion_public') | replace('-', '_') }}"
+          - "{{ ('tag_Project_' ~ env_type ~ '_' ~ guid) | replace('-', '_') }}"
+          - "bastion"
     - name: add bastion internal hostname
       add_host:
         name: "{{ bastion_assigned_hostname }}"
@@ -34,12 +39,17 @@
         - "{{ ('tag_Project_' ~ env_type ~ '_' ~ guid) | replace('-', '_') }}"
     - name: add remaining hosts
       add_host:
-        name: "{{ item['hostnames'].0 }}"
+        name: "{{ item.0['hostnames'].0 }}"
         groups:
-          - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_' ~ item.tag ) | replace('-', '_') }}"
+          - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_' ~ item.0.tag ) | replace('-', '_') }}"
           - "{{ ('tag_Project_' ~ env_type ~ '_' ~ guid) | replace('-', '_') }}"
-      with_items: "{{ cloud_template['vms'] }}"
-      when: item.tag != 'bastion'
+          - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_' ~ item.1.value ) | replace('-', '_') }}"
+          - "{{ item.1.value }}"
+      with_subelements: 
+        - "{{ cloud_template['vms'] }}"
+        - ansible_instance_tags
+      when: (item.0.tag != 'bastion') and (item.1.key == "AnsibleGroup")
+
     - debug:
         var: item.0
       with_subelements:
@@ -51,14 +61,9 @@
       with_subelements:
         - "{{ extra_host_groups }}"
         - hosts 
-    - name: add extra host groups
-      add_host:
-        name: "{{hostvars['localhost']['groups'][item.1].0}}"
-        groups: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_' ~ item.0.name) | replace('-','_') }}"
-      with_subelements:
-        - "{{ extra_host_groups }}"
-        - hosts 
 
+    - debug:
+        msg: "{{ hostvars['localhost']['groups'] }}"
     - name: bastion_ip
       debug:
         msg: "{{ hostvars[hostvars['localhost']['groups'][('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion') | replace('-', '_')].0] }}"

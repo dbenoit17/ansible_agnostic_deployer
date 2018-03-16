@@ -1,6 +1,11 @@
 vms:
 - name: 0Bastion Host
   tag: bastion
+  ansible_instance_tags: 
+{% for tag in instance['tags'] %}
+    - key: {{ tag['key'] }}
+      value: {{ tag['value'] }}
+{% endfor %}
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "0Bastion Host\nnohbac: true\n"
@@ -77,6 +82,9 @@ vms:
     protocol: TCP
 - name: 1OSP all-in-one Tokyo
   tag: osptokyo
+  ansible_instance_tags: 
+    - key: AnsibleGroup
+      value: OSP_Nodes
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "1OSP all-in-one Tokyo\nnohbac: true\n"
@@ -141,6 +149,9 @@ vms:
     protocol: TCP
 - name: 2OSP all-in-one Paris
   tag: ospparis
+  ansible_instance_tags: 
+    - key: AnsibleGroup
+      value: OSP_Nodes
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "2OSP all-in-one Paris\nnohbac: true\n"
@@ -205,6 +216,9 @@ vms:
     protocol: TCP
 - name: 3OSP all-in-one NewYork
   tag: ospnewyork
+  ansible_instance_tags: 
+    - key: AnsibleGroup
+      value: OSP_Nodes
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "3OSP all-in-one NewYork\nnohbac: true\n"
@@ -269,6 +283,11 @@ vms:
     protocol: TCP
 - name: 4CloudForms 4.2
   tag: cloudforms
+  ansible_instance_tags: 
+{% for tag in instance['tags'] %}
+    - key: {{ tag['key'] }}
+      value: {{ tag['value'] }}
+{% endfor %}
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "4CloudForms 4.2\nnohbac: true\n"

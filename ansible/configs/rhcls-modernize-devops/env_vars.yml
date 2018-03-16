@@ -98,6 +98,7 @@ osp_packages:
   - git
   - openssl-devel
   - python2-pip
+  - vim
 
 
 openstack_repos:

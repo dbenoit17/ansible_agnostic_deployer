@@ -1,6 +1,11 @@
 vms:
 - name: 0workstation
   tag: workstation
+  ansible_instance_tags: 
+{% for tag in instance['tags'] %}
+    - key: {{ tag['key'] }}
+      value: {{ tag['value'] }}
+{% endfor %}
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "0workstation\nnohbac: true\n"
@@ -44,14 +49,6 @@ vms:
       unit: GB
       value: 100
     type: DISK
-  - index: 2
-    boot: False
-    controller: virtio
-    name: ocp_cinder
-    size:
-      unit: GB
-      value: 100
-    type: DISK
   networkConnections:
   - name: eth0
     device:
@@ -86,6 +83,11 @@ vms:
     protocol: TCP
 - name: 1controller
   tag: controller
+  ansible_instance_tags: 
+{% for tag in instance['tags'] %}
+    - key: {{ tag['key'] }}
+      value: {{ tag['value'] }}
+{% endfor %}
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "1controller\nnohbac: true\n"
@@ -130,6 +132,14 @@ vms:
       unit: GB
       value: {{ bastion_image_disk_size }}
     type: DISK
+  - index: 2
+    boot: False
+    controller: virtio
+    name: ocp_cinder
+    size:
+      unit: GB
+      value: 100
+    type: DISK
   networkConnections:
   - name: eth0
     device:
@@ -149,7 +159,7 @@ vms:
       mac: 2c:c2:60:14:42:b8
     ipConfig:
       autoIpConfig:
-        reservedIp: 192.168.100.110
+        reservedIp: 192.168.20.10
   suppliedServices:
   - external: True
     ip: 10.0.0.10
@@ -158,6 +168,11 @@ vms:
     protocol: TCP
 - name: 3cfme
   tag: cfme
+  ansible_instance_tags: 
+{% for tag in instance['tags'] %}
+    - key: {{ tag['key'] }}
+      value: {{ tag['value'] }}
+{% endfor %}
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "3cfme\nnohbac: true\n"
@@ -213,3 +228,8 @@ vms:
         reservedIp: 10.0.0.8
       hasPublicIp: true
 
+network:
+  subnets:
+    - 192.168.20.0/24
+    - 10.0.0.0/24
+    

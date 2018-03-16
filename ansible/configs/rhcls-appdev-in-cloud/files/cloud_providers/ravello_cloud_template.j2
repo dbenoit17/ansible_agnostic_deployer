@@ -1,6 +1,11 @@
 vms:
 - name: 0workstation
   tag: workstation
+  ansible_instance_tags: 
+{% for tag in instance['tags'] %}
+    - key: {{ tag['key'] }}
+      value: {{ tag['value'] }}
+{% endfor %}
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "0workstation\nnohbac: true\n"
@@ -78,6 +83,9 @@ vms:
     protocol: TCP
 - name: 1master
   tag: master
+  ansible_instance_tags: 
+    - key: AnsibleGroup
+      value: OCP_Nodes
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "1master\nnohbac: true\n"
@@ -134,7 +142,9 @@ vms:
       hasPublicIp: true
 - name: 2node1
   tag: node01
-  allowNested: {{ allow_nested }}
+  ansible_instance_tags: 
+    - key: AnsibleGroup
+      value: OCP_Nodes
   preferPhysicalHost: {{ physical_host }}
   description: "2node1\nnohbac: true\n"
   numCpus: 4
@@ -190,6 +200,9 @@ vms:
       hasPublicIp: true
 - name: 3node2
   tag: node02
+  ansible_instance_tags: 
+    - key: AnsibleGroup
+      value: OCP_Nodes
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "3node2\nnohbac: true\n"
@@ -246,6 +259,9 @@ vms:
       hasPublicIp: true
 - name: 4node3
   tag: node03
+  ansible_instance_tags: 
+    - key: AnsibleGroup
+      value: OCP_Nodes
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "4node3\nnohbac: true\n"
@@ -302,6 +318,11 @@ vms:
       hasPublicIp: true
 - name: 5cloudforms
   tag: cfme
+  ansible_instance_tags: 
+{% for tag in instance['tags'] %}
+    - key: {{ tag['key'] }}
+      value: {{ tag['value'] }}
+{% endfor %}
   allowNested: {{ allow_nested }}
   preferPhysicalHost: {{ physical_host }}
   description: "5cloudforms\nnohbac: true\n"

@@ -32,6 +32,16 @@
   tasks:
     - debug:
         var: controller_eth1_hwaddr
+    - name: Stopping and disabling NetworkManager
+      systemd:
+        state: stopped
+        enabled: no
+        name: "NetworkManager"
+    - name: Start network
+      systemd:
+        state: started
+        enabled: yes
+        name: "network"
     - template:
         src: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/ifcfg-eth1"
         dest: "/etc/sysconfig/network-scripts/ifcfg-eth1"
@@ -41,3 +51,4 @@
     - lineinfile:
         dest: /etc/sysconfig/network-scripts/ifcfg-eth0
         line: 'IPV6INIT=NO'
+    

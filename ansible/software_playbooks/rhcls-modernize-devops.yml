@@ -45,6 +45,42 @@
       with_items: "{{ osp_packages }}"
       retries: 10
 
+- name: Reboot controller
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+  become: true
+  vars:
+    - host_tag: "{{ inventory_hostname | replace('-REPL.rhpds.opentlc.com', '') }}"
+    - answers_file_url: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/packstack/answers.j2"
+    - answers_file: /home/{{ remote_user }}/answers.txt
+    - glance_image_destination: "{{ glance_image_url }}"
+    - glance_images:
+        - { name: 'master', src: 'rhel.qcow2',dest: 'master.qcow2', flavor: 'm1.small' }
+        - { name: 'node01', src: 'rhel.qcow2',dest: 'node01.qcow2', flavor: 'm1.small' }
+        - { name: 'node02', src: 'rhel.qcow2',dest: 'node02.qcow2', flavor: 'm1.small' }
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - name: reboot updated systems
+      shell: sudo /usr/bin/systemd-run --on-active=10 /usr/bin/systemctl reboot
+    - pause:
+        seconds: 30
+      delegate_to: localhost
+    - name: wait for host to be available
+      wait_for:
+        host: '{{ inventory_hostname }}'
+        port: 22
+        search_regex: OpenSSH
+      delegate_to: "{{ (hostvars['localhost']['groups'][('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion_public') | replace('-', '_')].0) }}"
+      become: false
+      connection: local
+    - name: wait for openstack services
+      pause:
+        seconds: 120
+      delegate_to: localhost
+
+
 - name: Install shade using openstack shade role - update pip
   hosts: 
     - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
@@ -218,8 +254,12 @@
         path: /data/db
         state: directory
         recurse: yes
+    - name: pre_ackstack ip a
+      shell: ip a
     - name: Install OSP using answers file
       command: /usr/bin/packstack --answer-file={{answers_file}}
+    - name: post_ackstack ip a
+      shell: ip a
     - lineinfile:
         dest: /etc/nova/nova.conf
         regexp: '^#resume_guests_state_on_host_boot=false'
@@ -228,23 +268,60 @@
         dest: /etc/nova/nova.conf
         regexp: '^virt_type=qemu'
         line: 'virt_type=kvm'
-    - lineinfile:
-        dest: /etc/neutron/plugins/ml2/ml2_conf.ini
-        regexp: '^extension_drivers=port_security'
-        line: '#extension_drivers=port_security'
+#    - lineinfile:
+#        dest: /etc/neutron/plugins/ml2/ml2_conf.ini
+#        regexp: '^extension_drivers=port_security'
+#        line: '#extension_drivers=port_security'
     - lineinfile:
         dest: /etc/neutron/dhcp_agent.ini
         regexp: '^enable_isolated_metadata=False'
-        line: 'enable_isolated_metadata=true'
-    - shell: systemctl restart openstack-nova-* openstack-neutron-*
+        line: 'enable_isolated_metadata=True'
+    - replace:
+        dest: /etc/ssh/sshd_config
+        regexp: '^X11Forwarding no\nUseDNS no'
+        replace: 'X11Forwarding no'
+    #- shell: systemctl restart network openstack-nova-* openstack-neutron-* sshd
     - lineinfile:
         dest: /etc/httpd/conf.d/15-horizon_vhost.conf
         insertbefore: '^  ServerAlias localhost'
         line: '  ServerAlias *.srv.ravcloud.com'
-      notify: restart httpd
   handlers:
     - name: restart httpd
       service:
         name: httpd
         state: restarted
 
+- name: Reboot controller
+  hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
+  become: true
+  vars:
+    - host_tag: "{{ inventory_hostname | replace('-REPL.rhpds.opentlc.com', '') }}"
+    - answers_file_url: "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/files/packstack/answers.j2"
+    - answers_file: /home/{{ remote_user }}/answers.txt
+    - glance_image_destination: "{{ glance_image_url }}"
+    - glance_images:
+        - { name: 'master', src: 'rhel.qcow2',dest: 'master.qcow2', flavor: 'm1.small' }
+        - { name: 'node01', src: 'rhel.qcow2',dest: 'node01.qcow2', flavor: 'm1.small' }
+        - { name: 'node02', src: 'rhel.qcow2',dest: 'node02.qcow2', flavor: 'm1.small' }
+  vars_files:
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"
+    - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/ssh_vars.yml"
+  tasks:
+    - name: reboot updated systems
+      shell: sudo /usr/bin/systemd-run --on-active=10 /usr/bin/systemctl reboot
+    - pause:
+        seconds: 30
+      delegate_to: localhost
+    - name: wait for host to be available
+      wait_for:
+        host: '{{ inventory_hostname }}'
+        port: 22
+        search_regex: OpenSSH
+      delegate_to: "{{ (hostvars['localhost']['groups'][('tag_' ~ env_type ~ '_' ~ guid ~ '_bastion_public') | replace('-', '_')].0) }}"
+      become: false
+      connection: local
+    - name: wait for openstack services
+      pause:
+        seconds: 120
+      delegate_to: localhost

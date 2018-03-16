@@ -11,6 +11,12 @@
   vars:
     - allow_nested: False
     - physical_host: False
+    - blueprint_description: "this is a blueprint"
+    - blueprint_name: "{{ application_name }}-bp"
+    - instance:
+        tags:
+          - key: "AnsibleGroup"
+            value: "all_hosts"
   vars_files:
     - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_vars.yml"
     - "{{ ANSIBLE_REPO_PATH }}/configs/{{ env_type }}/env_secret_vars.yml"

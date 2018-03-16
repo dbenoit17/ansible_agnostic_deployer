@@ -32,9 +32,6 @@
     - name: get osp nic ip
       shell: "source /root/keystonerc_admin && echo $OS_AUTH_URL"
       register: os_auth_url_raw
-    - name: wait for openstack services to be ready
-      pause:
-        seconds: 300
     - name: print os_auth_url_raw
       debug:
         var: os_auth_url_raw
@@ -43,8 +40,8 @@
     - name: print os_auth_url
       debug:
         var: os_auth_url
-    - name: write progress to nova log
-      shell: echo "--- A MARK ---" >> /var/log/nova/nova-compute.log
+#    - name: write progress to nova log
+#      shell: echo "--- A MARK ---" >> /var/log/nova/nova-compute.log
     - name: Upload image into glance
       os_image:
         auth:
@@ -80,9 +77,16 @@
         dest: "/root/osp_rsa"
         mode: 0600
         owner: root
+    - name: save osp private key to file
+      copy:
+        content: "{{ osp_keys.key.private_key }}"
+        dest: "{{ ANSIBLE_REPO_PATH }}/workdir/osp_rsa-{{guid}}"
+        mode: 0600
+        owner: root
+      delegate_to: localhost
     - os_network:
         auth:
-          auth_url: http://{{ ansible_default_ipv4.address }}:5000/v2.0
+          auth_url: "{{ os_auth_url }}"
           username: admin
           password: "{{ default_password }}"
           project_name: admin
@@ -95,7 +99,7 @@
         provider_network_type: flat
     - os_subnet:
         auth:
-          auth_url: http://{{ ansible_default_ipv4.address }}:5000/v2.0
+          auth_url: "{{ os_auth_url }}"
           username: admin
           password: "{{ default_password }}"
           project_name: admin
@@ -104,11 +108,24 @@
         network_name: public
         name: public_subnet
         cidr: 192.168.20.0/24
+        dns_nameservers: 192.168.20.10
         allocation_pool_start: 192.168.20.100
         allocation_pool_end: 192.168.20.200
+        gateway_ip: 192.168.20.10
+#    - os_router:
+#        auth:
+#          auth_url: "{{ os_auth_url }}"
+#          username: admin
+#          password: "{{ default_password }}"
+#          project_name: admin
+#          default_domain_name: Default
+#        state: present
+#        name: osp-router
+#        interfaces:
+#          - public_subnet
     - os_security_group_rule:
         auth:
-          auth_url: http://{{ ansible_default_ipv4.address }}:5000/v2.0
+          auth_url: "{{ os_auth_url }}"
           username: admin
           password: "{{ default_password }}"
           project_name: admin
@@ -120,7 +137,7 @@
         remote_ip_prefix: 0.0.0.0/0
     - os_security_group_rule:
         auth:
-          auth_url: http://{{ ansible_default_ipv4.address }}:5000/v2.0
+          auth_url: "{{ os_auth_url }}"
           username: admin
           password: "{{ default_password }}"
           project_name: admin
@@ -130,16 +147,11 @@
         port_range_min: -1
         port_range_max: -1
         remote_ip_prefix: 0.0.0.0/0
-    - shell: systemctl restart openstack-nova-*
-    - shell: systemctl restart mariadb
-    - shell: systemctl restart openstack-neutron*
-    - pause:
-        seconds: 30
-  handlers:
-    - name: restart httpd
-      service:
-        name: httpd
-        state: restarted
+#    - shell: systemctl restart openstack-nova-*
+#    - shell: systemctl restart mariadb
+#    - shell: systemctl restart openstack-neutron*
+#    - pause:
+#        seconds: 30
 
 - name: Launch OSP Instances
   hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_controller') | replace('-', '_') }}"
@@ -167,7 +179,7 @@
         state: present
         name: m2.big
         vcpus: 8
-        ram: 20
+        ram: 20480
         disk: 50
     - name: launch compute instance
       os_server:
@@ -178,19 +190,24 @@
           project_name: admin
           default_domain_name: Default
         timeout: 10000
-        auto_ip: no
         state: present
         key_name: ansible_key
         image: "{{ item.src }}"
         flavor: "{{ item.flavor }}"
         name: "{{ item.name }}"
       with_items: "{{ glance_images }}"
-    - name: add bastion public hostname
+    - name: get ip of instance
+      shell: source /root/keystonerc_admin && openstack server list | gawk 'match($0, /{{ocp_master_hostname}}/){print substr($8,index($8,"=")+1)}'
+      register: master_ip_raw
+    - name: add ocp master hosntame
       add_host:
-        name: "{{ ocp_master_hostname }}"
+        name: "{{ master_ip_raw.stdout }}"
         groups: 
         - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_master') | replace('-', '_') }}"
+        - "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_OCP_Nodes') | replace('-', '_') }}"
         - "{{ ('tag_Project_' ~ env_type ~ '_' ~ guid) | replace('-', '_') }}"
+        - "master"
+        ansible_ssh_private_key_file: "{{ ANSIBLE_REPO_PATH }}/workdir/osp_rsa-{{guid}}"
 
 - name: Test access to ocp master
   hosts: "{{ ('tag_' ~ env_type ~ '_' ~ guid ~ '_master') | replace('-', '_') }}"
